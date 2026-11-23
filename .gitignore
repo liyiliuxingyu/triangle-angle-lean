@@ -1,0 +1,23 @@
+# TeX 编译临时文件；保留最终 PDF
+*.aux
+*.log
+*.toc
+*.out
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.xdv
+*.nav
+*.snm
+
+# Lean 构建产物和本地依赖缓存
+.lake/
+*.olean
+*.ilean
+
+# 编辑器和系统临时文件
+*~
+*.swp
+.DS_Store

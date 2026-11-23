@@ -1,0 +1,17 @@
+{
+  "exit_code": 0,
+  "theorem_count": 57,
+  "axiom_checks": 57,
+  "reported_axiom_checks": 57,
+  "errors": 0,
+  "warnings": 0,
+  "no_sorryAx": true,
+  "source_sha256": "f492b2d41016028278ffc772259c39a629d3c7f3079ad0aebbd428a5e1da4b42",
+  "all_theorems_audited": true,
+  "axiom_lists": [
+    "[propext, Classical.choice, Quot.sound]"
+  ],
+  "lean_version": "4.19.0",
+  "mathlib_version": "v4.19.0",
+  "mathlib_commit": "c44e0c8ee63ca166450922a373c7409c5d26b00b"
+}

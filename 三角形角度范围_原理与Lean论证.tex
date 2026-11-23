@@ -1,0 +1,3138 @@
+% 使用 XeLaTeX 编译两遍。本文件采用标准 ctexbook 章节样式。
+\documentclass[UTF8,a4paper,zihao=-4,oneside,openany,fontset=fandol]{ctexbook}
+\usepackage[left=18mm,right=18mm,top=20mm,bottom=20mm,headheight=16pt,headsep=7mm,footskip=10mm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs,tabularx,longtable,array,enumitem}
+\usepackage{xcolor,graphicx,tikz}
+\usetikzlibrary{angles,quotes,calc,arrows.meta}
+\usepackage{fvextra}
+\usepackage{xurl}
+\usepackage[unicode,hidelinks,bookmarksnumbered]{hyperref}
+\hypersetup{pdftitle={三角形角度范围：原理、论证与 Lean 形式化},pdfauthor={},pdfsubject={最小角与最大角的范围、逻辑量词及完整 Lean 证明}}
+\IfFileExists{fonts/DejaVuSansMono.ttf}{
+  \setmonofont{DejaVuSansMono.ttf}[Path=fonts/,Scale=0.90,Ligatures=NoCommon,
+    BoldFont=DejaVuSansMono-Bold.ttf,ItalicFont=DejaVuSansMono-Oblique.ttf,
+    BoldItalicFont=DejaVuSansMono-BoldOblique.ttf]
+}{
+  \setmonofont{DejaVu Sans Mono}[Scale=0.90,Ligatures=NoCommon]
+}
+\newtheorem{theorem}{定理}[chapter]
+\newtheorem{proposition}[theorem]{命题}
+\newtheorem{corollary}[theorem]{推论}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{定义}
+\newtheorem{example}[theorem]{例}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{说明}
+\renewcommand{\proofname}{证明}
+\renewcommand{\arraystretch}{1.28}
+\setlength{\tabcolsep}{5pt}
+\setlength{\emergencystretch}{2em}
+\setlist{itemsep=0.3em,topsep=0.4em}
+\allowdisplaybreaks[2]
+\raggedbottom
+\setcounter{tocdepth}{1}
+\fvset{fontsize=\footnotesize,breaklines=true,breakanywhere=true,
+  breaksymbolleft={},breaksymbolright={},breakindent=1em,
+  frame=single,framerule=0.25pt,rulecolor=\color{black!35},
+  framesep=2.5mm,tabsize=2,showspaces=false,showtabs=false,
+  xleftmargin=1mm,xrightmargin=1mm}
+\title{三角形角度范围\\[0.5em]\large 原理、逐步论证与 Lean 形式化}
+\author{}
+\date{2026年11月17日}
+\begin{document}
+\frontmatter
+\maketitle
+\chapter*{阅读说明}
+\addcontentsline{toc}{chapter}{阅读说明}
+
+本书把一个看似简单的问题完整展开：只知道三角形最小角、最大角或任意一个内角的范围，究竟能够确定什么？为什么“锐角三角形的最小角可以小于 $45^\circ$”与“最小角大于 $45^\circ$ 能保证锐角”并不矛盾？
+
+正文先给结论，再从内角和与大小顺序逐步推导；随后解释必要条件、充分条件、充要条件，以及存在量词和全称量词。最后把这些论证与 Lean 代码对应起来，并逐行收入完整源码。读者可以先阅读数学论证与图示，再看 Lean 形式化讲解；新增的任意角章节与前面的最小角、最大角结论相互对照。附录可用于核对和复现。
+
+\section*{本书采用的约定}
+
+研究对象为非退化欧氏平面三角形。把三个内角按大小排列为 $a\le b\le c$，并以度为单位记录数值；因此最小角为 $m=a$，最大角为 $M=c$。数学公式若省略角度符号，仍表示度数，而不是弧度。所有角度允许为任意实数。
+
+Lean 文件采用有序角度三元组作为模型，没有把平面坐标与几何作图作为形式化对象。正文中补充的几何解释、辅助命题和图示用于帮助理解；已逐条形式化的 57 个定理在正文索引中列明，不能把该数量理解为逐条覆盖书中的每一个辅助论述。
+
+\section*{验证与源码说明}
+
+随附源码已在 Lean 4.19.0 与 mathlib v4.19.0 下完成检查：57 个定理，退出码为 0，没有错误或警告。全部定理的公理依赖均已检查，没有未完成证明占位。本书附录收入的源码与已检查文件一致；源码中的角度是实数，不是对有限组整数角度进行抽样测试。
+
+LaTeX 采用 \texttt{ctexbook} 的章节与中文排版体系，使用简体中文 Fandol 字体与常规数学字体。图形为 TikZ 矢量图，正文和代码均为可选择文本。为完整显示 Lean 的 Unicode 符号，代码使用 DejaVu Sans Mono；源码包附带所需的等宽字体及其许可说明。
+
+\begingroup
+\small
+\tableofcontents
+\endgroup
+\mainmatter
+
+% 数学正文片段；依赖 amsmath、amssymb、amsthm。
+% 主文件须定义 theorem、proposition、example、remark 环境。
+% proof 使用 amsthm 的标准证明环境。本片段不定义任何自定义命令。
+
+\chapter{结论总览与符号约定}
+\label{math:overview}
+
+本书讨论普通平面三角形的内角，排除三个顶点共线等退化情况。
+全部角度都用\textbf{度数}表示：公式中的 $45$ 表示 $45^\circ$，$90$ 表示 $90^\circ$。
+角度可以是任意实数，不要求是整数。
+
+把三个内角从小到大排列，记为
+\[
+0<a\le b\le c,\qquad a+b+c=180.
+\]
+因此，最小角的度数为 $m=a$，最大角的度数为 $M=c$。
+两个或三个角相等时，上述排列仍然适用。
+
+我们用
+\[
+\mathcal T=
+\{(a,b,c)\in\mathbb R^3:0<a\le b\le c,\ a+b+c=180\}
+\]
+表示所有符合这些条件的角度三元组。对 $t=(a,b,c)\in\mathcal T$，记
+\[
+m(t)=a,\qquad M(t)=c.
+\]
+用 $A(t)$、$R(t)$、$O(t)$ 分别表示 $t$ 对应锐角、直角、钝角三角形。
+其具体含义为
+\begin{align*}
+A(t)&\quad\Longleftrightarrow\quad a<90\ \land\ b<90\ \land\ c<90,\\
+R(t)&\quad\Longleftrightarrow\quad a=90\ \lor\ b=90\ \lor\ c=90,\\
+O(t)&\quad\Longleftrightarrow\quad a>90\ \lor\ b>90\ \lor\ c>90.
+\end{align*}
+这里定义的是角度模型；后面的 Lean 代码也以这个模型为形式化对象。
+
+\section{基本范围和最大角判据}
+
+下表先给出所有结论，具体推导从下一章开始。
+
+\begin{center}
+\begin{tabular}{|p{0.22\textwidth}|p{0.32\textwidth}|p{0.32\textwidth}|}
+\hline
+已知条件 & 最小角的范围 & 最大角的范围\\
+\hline
+任意三角形 & $0<m\le60$ & $60\le M<180$\\
+\hline
+锐角三角形 & $0<m\le60$ & $60\le M<90$\\
+\hline
+直角三角形 & $0<m\le45$ & $M=90$\\
+\hline
+钝角三角形 & $0<m<45$ & $90<M<180$\\
+\hline
+\end{tabular}
+\end{center}
+
+对任意给定的 $t\in\mathcal T$，最大角的三个条件都是充要条件：
+\[
+\boxed{
+\begin{aligned}
+A(t)&\Longleftrightarrow60\le M(t)<90,\\
+R(t)&\Longleftrightarrow M(t)=90,\\
+O(t)&\Longleftrightarrow90<M(t)<180.
+\end{aligned}}
+\]
+充要条件表示两个方向都成立，因此上述三个双向箭头均可以拆成两个单向箭头。
+
+\section{只知道最小角时，能够保证什么}
+
+\begin{center}
+\begin{tabular}{|p{0.28\textwidth}|p{0.58\textwidth}|}
+\hline
+已知最小角的度数 & 能够作出的判断\\
+\hline
+$0<m<45$ & 锐角、直角、钝角三角形都有可能；对这个区间内每一个具体的 $m$，三种类型都分别存在。\\
+\hline
+$m=45$ & 可能是锐角或直角三角形；这两种类型都确实存在；不可能是钝角三角形。\\
+\hline
+$45<m\le60$ & 所有具有这个最小角的三角形都是锐角三角形。\\
+\hline
+\end{tabular}
+\end{center}
+
+对单个三角形，可以写成
+\[
+\boxed{
+\begin{aligned}
+m(t)>45&\Longrightarrow A(t),\\
+m(t)=45&\Longrightarrow A(t)\lor R(t),\\
+m(t)\ge45&\Longrightarrow\neg O(t).
+\end{aligned}}
+\]
+其中 $\lor$ 表示逻辑上的“或”。对一个实际三角形，锐角与直角类型不能同时成立。
+
+\section{“可以存在”与“一定如此”的精确表述}
+
+“某类三角形的最小角能取到 $m$”说的是\textbf{存在}一个这样的三角形。
+下表中的每一行都表示左右两栏等价。
+
+\begin{center}
+\begin{tabular}{|p{0.59\textwidth}|p{0.27\textwidth}|}
+\hline
+存在性命题 & 等价的数值条件\\
+\hline
+$\exists t\in\mathcal T,\ m(t)=m\land A(t)$ & $0<m\le60$\\
+\hline
+$\exists t\in\mathcal T,\ m(t)=m\land R(t)$ & $0<m\le45$\\
+\hline
+$\exists t\in\mathcal T,\ m(t)=m\land O(t)$ & $0<m<45$\\
+\hline
+\end{tabular}
+\end{center}
+
+“只知道最小角就能保证类型”说的是\textbf{所有}具有这个最小角的三角形。
+先假设 $0<m\le60$，使这个最小角确实能够出现，则有
+\[
+\boxed{
+\bigl[\forall t\in\mathcal T,\ m(t)=m\Longrightarrow A(t)\bigr]
+\Longleftrightarrow m>45.}
+\]
+在同一可行范围内，另外两个保证命题始终不成立：
+\begin{align*}
+&\neg\bigl[\forall t\in\mathcal T,\ m(t)=m\Longrightarrow R(t)\bigr],\\
+&\neg\bigl[\forall t\in\mathcal T,\ m(t)=m\Longrightarrow O(t)\bigr].
+\end{align*}
+原因是：每一个 $0<m\le60$ 都能作为某个锐角三角形的最小角。
+
+
+\section{只知道任意一个角时的判定摘要}
+
+本书新增另一种常见题型：题目只给出三角形的一个内角为 $x$，不说明它是最小角或最大角。此时必须使用以下分类，不能把“一个角”直接替换成“最小角”。
+\begin{center}
+\begin{tabularx}{\textwidth}{|p{0.25\textwidth}|X|}
+\hline
+已知的任意内角 & 能够得到的结论\\
+\hline
+$0<x<90$ & 锐角、直角、钝角三类分别都可能，不能唯一判定。\\
+\hline
+$x=90$ & 一定是直角三角形。\\
+\hline
+$90<x<180$ & 一定是钝角三角形。\\
+\hline
+\end{tabularx}
+\end{center}
+不存在某个可行角度，使仅凭“有一个内角等于它”就能保证锐角三角形。第\ref{chap:arbitrary-angle}章给出完整证明、通用构造、区间图和例题；第\ref{sec:lean-any-angle}节解释相应的 Lean 建模与证明。
+
+\section{七个不能成立的反向推理}
+
+下表中的“错误蕴含”都被理解为对\textbf{所有}三角形作出的断言。
+每行的反例都使箭头左边为真、右边为假，因此相应的全称命题不能成立。
+
+\begin{center}
+\begin{tabular}{|p{0.06\textwidth}|p{0.50\textwidth}|p{0.29\textwidth}|}
+\hline
+序号 & 错误蕴含 & 反例的三个角\\
+\hline
+1 & $A(t)\Longrightarrow m(t)>45$ & $(30,75,75)$，锐角\\
+\hline
+2 & $0<m(t)\le60\Longrightarrow A(t)$ & $(30,60,90)$，直角\\
+\hline
+3 & $0<m(t)\le45\Longrightarrow R(t)$ & $(30,75,75)$，锐角\\
+\hline
+4 & $0<m(t)<45\Longrightarrow O(t)$ & $(30,75,75)$，锐角\\
+\hline
+5 & $0<m(t)<45\Longrightarrow A(t)$ & $(30,40,110)$，钝角\\
+\hline
+6 & $m(t)=45\Longrightarrow A(t)$ & $(45,45,90)$，直角\\
+\hline
+7 & $m(t)=45\Longrightarrow R(t)$ & $(45,60,75)$，锐角\\
+\hline
+\end{tabular}
+\end{center}
+
+\chapter{基本范围与最大角的充要条件}
+\label{math:maximum}
+
+\section{最小角和最大角的通用范围}
+
+\begin{theorem}[任意三角形的最小角与最大角范围]
+若 $t=(a,b,c)\in\mathcal T$，则
+\[
+0<a\le60,\qquad60\le c<180.
+\]
+\end{theorem}
+
+\begin{proof}[证明]
+先求最小角的范围。条件中已经有 $a>0$。
+因为 $a\le b$ 且 $a\le c$，三个数相加得到
+\[
+a+a+a\le a+b+c=180.
+\]
+因此 $3a\le180$。两边同除以正数 $3$，得到 $a\le60$，从而
+\[
+0<a\le60.
+\]
+
+再求最大角的下界。由 $a\le c$ 和 $b\le c$，得到
+\[
+180=a+b+c\le c+c+c=3c.
+\]
+两边同除以 $3$，得到 $60\le c$。
+
+最后求最大角的上界。由 $b\ge a>0$，可知 $a+b>0$。
+内角和条件给出
+\[
+c=180-(a+b)<180.
+\]
+把下界和上界合在一起，就得到 $60\le c<180$。
+\end{proof}
+
+\begin{example}[端点 $60$ 为什么包含在范围内]
+角度三元组 $(60,60,60)$ 满足正性、排序和内角和条件。
+它的最小角和最大角都等于 $60$，所以这两个范围中的端点 $60$ 都必须包含。
+反之，若最小角 $a=60$，则 $b,c\ge60$，而 $a+b+c=180$。
+于是 $b+c=120$；两个都不小于 $60$ 的数只有都等于 $60$，和才可能为 $120$。
+若最大角 $c=60$，则 $a,b\le60$，而 $a+b=120$，也只能有 $a=b=60$。
+\end{example}
+
+\begin{proposition}[按大小排列后，第二个角一定是锐角]
+若 $t=(a,b,c)\in\mathcal T$，则 $0<b<90$。
+\end{proposition}
+
+\begin{proof}[证明]
+由 $b\ge a>0$，得到 $b>0$。
+由 $c\ge b$，得到
+\[
+180=a+b+c\ge a+2b>2b.
+\]
+因此 $2b<180$，即 $b<90$。
+同时 $a\le b<90$，所以最小角也是锐角。
+这说明一个三角形至少有两个锐角；若有直角或钝角，它只能出现在最大角的位置。
+\end{proof}
+
+\section{角度三元组为什么对应平面三角形}
+\label{math:geometry-bridge}
+
+前面的集合 $\mathcal T$ 由实数及等式、不等式定义。为了把“存在一个角度三元组”解释为“存在一个普通平面三角形”，还需要说明这些数值条件确实可以实现。下面给出一个坐标构造。
+
+\begin{proposition}[角度模型的几何实现]
+对每一个 $(a,b,c)\in\mathcal T$，都存在一个非退化的欧氏平面三角形，其三个内角依次为 $a^\circ,b^\circ,c^\circ$。
+\end{proposition}
+
+\begin{proof}[证明]
+因为 $a,b,c$ 都为正且和为 $180$，所以每个数都严格小于 $180$。因此
+\[
+\sin(a^\circ)>0,\qquad
+\sin(b^\circ)>0,\qquad
+\sin(c^\circ)>0.
+\]
+定义两个正数
+\[
+r=\frac{\sin(b^\circ)}{\sin(c^\circ)},
+\qquad
+q=\frac{\sin(a^\circ)}{\sin(c^\circ)}.
+\]
+在平面上取
+\[
+A=(0,0),\qquad B=(1,0),\qquad
+C=\bigl(r\cos(a^\circ),\,r\sin(a^\circ)\bigr).
+\]
+点 $C$ 的纵坐标为 $r\sin(a^\circ)>0$，所以它位于直线 $AB$ 上方，三个点不共线，所得三角形非退化。
+
+先检查顶点 $A$ 处的角。向量
+\[
+\overrightarrow{AB}=(1,0),\qquad
+\overrightarrow{AC}=r\bigl(\cos(a^\circ),\sin(a^\circ)\bigr)
+\]
+中，$r>0$。第二个向量相对于向右的水平轴具有方向角 $a^\circ\in(0^\circ,180^\circ)$，故 $\angle BAC=a^\circ$。
+
+再检查顶点 $B$ 处的角。由 $c=180-a-b$ 和正弦加法公式，
+\[
+\sin(c^\circ)
+=\sin\bigl((a+b)^\circ\bigr)
+=\sin(a^\circ)\cos(b^\circ)+\cos(a^\circ)\sin(b^\circ).
+\]
+于是，向量 $\overrightarrow{BC}$ 的横、纵分量分别满足
+\[
+\begin{aligned}
+r\cos(a^\circ)-1
+&=\frac{\sin(b^\circ)\cos(a^\circ)-\sin(c^\circ)}
+        {\sin(c^\circ)}
+=-q\cos(b^\circ),\\
+r\sin(a^\circ)
+&=\frac{\sin(b^\circ)\sin(a^\circ)}{\sin(c^\circ)}
+=q\sin(b^\circ).
+\end{aligned}
+\]
+因此
+\[
+\overrightarrow{BA}=(-1,0),\qquad
+\overrightarrow{BC}
+=q\bigl(-\cos(b^\circ),\sin(b^\circ)\bigr).
+\]
+由 $\sin^2(b^\circ)+\cos^2(b^\circ)=1$ 和 $q>0$，两向量的长度分别为 $1$ 和 $q$。若它们的夹角记为 $\beta$，则
+\[
+\cos\beta
+=\frac{\overrightarrow{BA}\cdot\overrightarrow{BC}}{1\cdot q}
+=\frac{q\cos(b^\circ)}q
+=\cos(b^\circ).
+\]
+两向量的夹角属于 $[0^\circ,180^\circ]$，而余弦在这个区间严格递减；结合 $b^\circ\in(0^\circ,180^\circ)$，可确定 \mbox{$\angle ABC=b^\circ$}。
+
+最后，由欧氏平面三角形的内角和定理，
+\[
+\angle ACB=180^\circ-a^\circ-b^\circ=c^\circ.
+\]
+三个角正好是给定的三个数值，构造完成。
+\end{proof}
+
+这一命题是普通欧氏几何的书面说明，用来连接数值模型与实际平面三角形。随附 Lean 文件验证的是角度模型中的核心 57 个定理；本坐标构造没有另外写成 Lean 声明，也不计入这 57 个定理的验证数量。
+
+
+\section{锐角三角形与最大角}
+
+\begin{theorem}[锐角三角形的最大角判据]
+对任意 $t\in\mathcal T$，有
+\[
+A(t)\Longleftrightarrow M(t)<90
+\Longleftrightarrow60\le M(t)<90.
+\]
+\end{theorem}
+
+\begin{proof}[证明]
+若 $t$ 是锐角三角形，三个角都小于 $90$，其中最大的角 $c$ 也小于 $90$。
+这是从类型推出最大角条件的方向。
+
+反过来，若最大角 $c<90$，由 $a\le c$、$b\le c$，分别得到
+\[
+a<90,\qquad b<90,\qquad c<90.
+\]
+三个角都为锐角，因此 $t$ 是锐角三角形。
+
+上一节已经证明每个三角形都满足 $c\ge60$。
+所以在三角形的范围内，条件 $c<90$ 与 $60\le c<90$ 完全等价。
+\end{proof}
+
+\section{直角三角形与最大角}
+
+\begin{theorem}[直角三角形的最大角判据]
+对任意 $t\in\mathcal T$，有
+\[
+R(t)\Longleftrightarrow M(t)=90.
+\]
+\end{theorem}
+
+\begin{proof}[证明]
+若 $t$ 是直角三角形，则三个角中至少有一个等于 $90$。
+前面已经证明 $a\le60$，所以 $a$ 不可能等于 $90$；又已经证明 $b<90$，所以 $b$ 也不可能等于 $90$。
+因此这个直角只能是 $c$，于是 $M(t)=c=90$。
+
+反过来，若最大角 $c=90$，则三角形确实具有一个直角，满足直角三角形的定义。
+此外，$a+b=180-90=90$ 且 $a,b>0$，因此另外两个角都严格小于 $90$。
+\end{proof}
+
+\section{钝角三角形与最大角}
+
+\begin{theorem}[钝角三角形的最大角判据]
+对任意 $t\in\mathcal T$，有
+\[
+O(t)\Longleftrightarrow M(t)>90
+\Longleftrightarrow90<M(t)<180.
+\]
+\end{theorem}
+
+\begin{proof}[证明]
+若 $t$ 是钝角三角形，则至少有一个角大于 $90$。
+最大角 $c$ 不小于这个角，所以 $c>90$。
+
+反过来，若最大角 $c>90$，则三角形已经具有一个钝角，因此它是钝角三角形。
+
+每个三角形都满足 $c<180$，所以在三角形的范围内，条件 $c>90$ 与 $90<c<180$ 等价。
+\end{proof}
+
+\begin{remark}[三种类型既不遗漏，也不重叠]
+任意实数 $c$ 与 $90$ 比较，必且只会出现 $c<90$、$c=90$、$c>90$ 中的一种情况。
+把刚刚证明的三个充要条件应用于这三种情况，可以得到：每个三角形恰好属于锐角、直角、钝角三角形中的一类。
+因此最大角的三段范围可以直接用于判断类型。
+\end{remark}
+
+\begin{proposition}[最大角范围内的每个数值都能达到]
+给定任意实数 $M$，若 $60\le M<180$，则
+\[
+t_M=\left(\frac{180-M}{2},\frac{180-M}{2},M\right)
+\]
+属于 $\mathcal T$，而且 $M(t_M)=M$。
+\end{proposition}
+
+\begin{proof}[证明]
+因为 $M<180$，所以 $(180-M)/2>0$。
+前两个角相等。由 $M\ge60$，有 $3M\ge180$，从而
+\[
+\frac{180-M}{2}\le M.
+\]
+所以三个角已经按从小到大的顺序排列。
+它们的和为
+\[
+\frac{180-M}{2}+\frac{180-M}{2}+M=180.
+\]
+因此 $t_M\in\mathcal T$，最后一个角就是最大角 $M$。
+再根据 $M<90$、$M=90$、$M>90$，分别得到相应类型。
+这不仅给出了最大角的必要界限，也说明这些范围内部没有被遗漏的数值。
+\end{proof}
+
+\chapter{最小角的必要范围与充分条件}
+\label{math:minimum}
+
+\section{已知类型，求最小角的必要范围}
+
+\begin{theorem}[三种类型的最小角必要范围]
+对任意 $t\in\mathcal T$，有
+\[
+\begin{aligned}
+A(t)&\Longrightarrow0<m(t)\le60,\\
+R(t)&\Longrightarrow0<m(t)\le45,\\
+O(t)&\Longrightarrow0<m(t)<45.
+\end{aligned}
+\]
+\end{theorem}
+
+\begin{proof}[证明]
+对于锐角三角形，通用范围已经给出 $0<a\le60$。
+这个范围实际上对所有三角形都成立，所以仅知道最小角落在 $(0,60]$ 中，不能据此识别锐角三角形。
+
+对于直角三角形，最大角判据给出 $c=90$。
+代入内角和，得到
+\[
+a+b=180-90=90.
+\]
+由 $a\le b$，得到
+\[
+2a\le a+b=90.
+\]
+因此 $a\le45$。再加上 $a>0$，就得到 $0<a\le45$。
+
+对于钝角三角形，最大角判据给出 $c>90$。
+因此
+\[
+a+b=180-c<90.
+\]
+结合 $a\le b$，得到
+\[
+2a\le a+b<90.
+\]
+所以 $a<45$，再加上正性，就得到 $0<a<45$。
+\end{proof}
+
+\begin{remark}[为什么直角的端点能取到，钝角的端点不能取到]
+在直角情形中，$a+b=90$，允许 $a=b=45$，因此最小角可以等于 $45$。
+在钝角情形中，$a+b<90$；若还要求 $a\ge45$，则 $b\ge a\ge45$，导致 $a+b\ge90$，与前式冲突。
+因此钝角三角形的最小角必须严格小于 $45$。
+\end{remark}
+
+\section{最小角大于45度为什么能保证锐角}
+
+\begin{proposition}[用最小角控制最大角]
+对任意 $t=(a,b,c)\in\mathcal T$，有
+\[
+c\le180-2a.
+\]
+\end{proposition}
+
+\begin{proof}[证明]
+由 $b\ge a$，得到 $a+b\ge2a$。
+在等式 $c=180-(a+b)$ 中减去不小于 $2a$ 的数，结果不超过 $180-2a$，所以
+\[
+c=180-(a+b)\le180-2a.
+\]
+\end{proof}
+
+\begin{theorem}[最小角大于 $45^\circ$ 是锐角的充分条件]
+对任意 $t\in\mathcal T$，有
+\[
+m(t)>45\Longrightarrow A(t).
+\]
+\end{theorem}
+
+\begin{proof}[证明]
+设 $a=m(t)>45$。两边乘以正数 $2$，得到 $2a>90$，从而
+\[
+180-2a<90.
+\]
+根据刚刚证明的最大角上界，
+\[
+c\le180-2a<90.
+\]
+因此最大角小于 $90$。由最大角判据，三个角都小于 $90$，三角形为锐角三角形。
+\end{proof}
+
+\begin{example}[可以保证锐角，但不是每个锐角三角形都满足这个条件]
+若最小角为 $50$，则最大角满足
+\[
+c\le180-2\times50=80<90,
+\]
+所以三角形一定是锐角三角形。
+但是 $(30,75,75)$ 的三个角都小于 $90$，它也是锐角三角形，其最小角却只有 $30$。
+因此“最小角大于 $45$”足以保证锐角，却不是成为锐角三角形所必须满足的条件。
+\end{example}
+
+\section{最小角恰好等于45度时的边界情况}
+
+\begin{theorem}[最小角为 $45^\circ$ 时，只有锐角和直角两种可能]
+对任意 $t\in\mathcal T$，有
+\[
+m(t)=45\Longrightarrow A(t)\lor R(t).
+\]
+这两种类型都存在，但钝角三角形不存在。
+\end{theorem}
+
+\begin{proof}[证明]
+设 $a=45$。由 $c\le180-2a$，得到
+\[
+c\le180-2\times45=90.
+\]
+当 $c<90$ 时，根据最大角判据，三角形为锐角三角形。
+当 $c=90$ 时，根据最大角判据，三角形为直角三角形。
+由于已经有 $c\le90$，不可能出现 $c>90$，因此钝角类型被排除。
+
+为了证明两种剩余类型都确实可以出现，分别取
+\[
+t_1=(45,60,75),\qquad t_2=(45,45,90).
+\]
+两组三个角均为正，均按大小排列，而且各自的和都是 $180$。
+第一组的最大角为 $75<90$，所以为锐角三角形；第二组的最大角为 $90$，所以为直角三角形。
+它们的最小角都等于 $45$。
+\end{proof}
+
+\begin{proposition}[最小角至少为 $45^\circ$ 时，不可能钝角]
+对任意 $t\in\mathcal T$，有
+\[
+m(t)\ge45\Longrightarrow\neg O(t).
+\]
+\end{proposition}
+
+\begin{proof}[证明]
+若 $a\ge45$，则 $2a\ge90$，于是
+\[
+c\le180-2a\le90.
+\]
+钝角三角形要求最大角严格大于 $90$，这与 $c\le90$ 不相容，所以该三角形不可能为钝角三角形。
+\end{proof}
+
+\chapter{通用构造与最小角的全部可能范围}
+\label{math:constructions}
+
+\section{锐角三角形的最小角范围能够全部达到}
+
+\begin{theorem}[锐角三角形的通用构造]
+设 $m\in\mathbb R$ 且 $0<m\le60$，定义
+\[
+t_A(m)=\left(m,\ 90-\frac m2,\ 90-\frac m2\right).
+\]
+则 $t_A(m)\in\mathcal T$，其最小角为 $m$，且 $A(t_A(m))$ 成立。
+\end{theorem}
+
+\begin{proof}[证明]
+先检查最小的候选角为正：这正是条件 $m>0$。
+
+再检查排序。第二个角减去第一个角，得到
+\[
+90-\frac m2-m
+=90-\frac{3m}{2}
+=\frac32(60-m)\ge0.
+\]
+因此 $m\le90-m/2$。第二个角和第三个角相等，所以三个角确实按从小到大排列。
+由于后两个角不小于正数 $m$，它们也都是正角。
+
+检查内角和：
+\[
+m+\left(90-\frac m2\right)+\left(90-\frac m2\right)
+=m+180-m=180.
+\]
+所以该三元组属于 $\mathcal T$，最小角就是第一个角 $m$。
+
+最后检查类型。因为 $m>0$，所以 $m/2>0$，从而
+\[
+M(t_A(m))=90-\frac m2<90.
+\]
+根据最大角判据，它是锐角三角形。
+\end{proof}
+
+\section{直角三角形的最小角范围能够全部达到}
+
+\begin{theorem}[直角三角形的通用构造]
+设 $0<m\le45$，定义
+\[
+t_R(m)=(m,\ 90-m,\ 90).
+\]
+则 $t_R(m)\in\mathcal T$，其最小角为 $m$，且 $R(t_R(m))$ 成立。
+\end{theorem}
+
+\begin{proof}[证明]
+第一个角 $m$ 为正。
+第二个角减去第一个角，得到
+\[
+(90-m)-m=90-2m\ge0,
+\]
+所以 $m\le90-m$。
+第三个角减去第二个角，得到
+\[
+90-(90-m)=m>0,
+\]
+所以 $90-m<90$。
+三个角已经排序，且都为正。
+
+它们的和为
+\[
+m+(90-m)+90=180.
+\]
+所以这个三元组属于 $\mathcal T$，最小角为 $m$，最大角为 $90$。
+根据最大角判据，它是直角三角形。
+\end{proof}
+
+\section{钝角三角形的最小角范围能够全部达到}
+
+\begin{theorem}[钝角三角形的通用构造]
+设 $0<m<45$，定义
+\[
+t_O(m)=(m,\ m,\ 180-2m).
+\]
+则 $t_O(m)\in\mathcal T$，其最小角为 $m$，且 $O(t_O(m))$ 成立。
+\end{theorem}
+
+\begin{proof}[证明]
+前两个角都等于正数 $m$。
+第三个角减去第二个角，得到
+\[
+(180-2m)-m
+=180-3m
+=45+3(45-m)>0.
+\]
+因此第三个角大于前两个角，三个角符合排序要求，也全部为正。
+
+它们的和为
+\[
+m+m+(180-2m)=180.
+\]
+所以这个三元组属于 $\mathcal T$，最小角为 $m$，最大角为 $180-2m$。
+
+由 $m<45$，可得
+\[
+(180-2m)-90=2(45-m)>0.
+\]
+因此最大角严格大于 $90$，根据最大角判据，它是钝角三角形。
+同时，由 $m>0$ 还有 $180-2m<180$，所以最大角仍然严格小于平角。
+\end{proof}
+
+\section{最小角小于45度时，三种类型都能出现}
+
+\begin{theorem}[整个开区间上的三种可能]
+对每一个实数 $m$，只要 $0<m<45$，就分别存在最小角为 $m$ 的锐角、直角和钝角三角形。
+\end{theorem}
+
+\begin{proof}[证明]
+固定任意一个满足 $0<m<45$ 的实数 $m$。
+因为 $m<45<60$，它满足锐角构造的条件 $0<m\le60$；它也满足直角构造的条件 $0<m\le45$；钝角构造要求的 $0<m<45$ 正是当前假设。
+
+因此分别取
+\[
+\begin{aligned}
+t_A(m)&=\left(m,90-\frac m2,90-\frac m2\right),\\
+t_R(m)&=(m,90-m,90),\\
+t_O(m)&=(m,m,180-2m).
+\end{aligned}
+\]
+前面三个定理已经分别验证它们属于 $\mathcal T$，最小角都是 $m$，类型分别为锐角、直角、钝角。
+由于起初固定的 $m$ 是区间 $(0,45)$ 中的任意实数，结论对整个区间成立。
+\end{proof}
+
+\begin{example}[把通用公式代入具体数值]
+取 $m=30$，上述三个构造分别给出
+\[
+(30,75,75),\qquad(30,60,90),\qquad(30,30,120).
+\]
+三个最大角依次为 $75$、$90$、$120$，因此分别对应锐角、直角、钝角三角形。
+这里的钝角见证与前表中的 $(30,40,110)$ 不同，但二者都有效；一个错误命题可以具有多个反例。
+\end{example}
+
+\section{三个最小角存在范围的充要条件}
+
+\begin{theorem}[某类三角形的最小角能取哪些值]
+对任意实数 $m$，分别有
+\begin{align*}
+\bigl[\exists t\in\mathcal T,\ m(t)=m\land A(t)\bigr]
+&\Longleftrightarrow0<m\le60,\\
+\bigl[\exists t\in\mathcal T,\ m(t)=m\land R(t)\bigr]
+&\Longleftrightarrow0<m\le45,\\
+\bigl[\exists t\in\mathcal T,\ m(t)=m\land O(t)\bigr]
+&\Longleftrightarrow0<m<45.
+\end{align*}
+\end{theorem}
+
+\begin{proof}[证明]
+先证明锐角情形的两个方向。
+若存在这样的锐角三角形 $t$，它的最小角满足通用范围 $0<m(t)\le60$。
+代入 $m(t)=m$，得到 $0<m\le60$。
+反过来，若 $0<m\le60$，锐角通用构造 $t_A(m)$ 就提供了所需的三角形。
+因此第一条等价式的两个方向都成立。
+
+对于直角情形，若存在最小角为 $m$ 的直角三角形，则最小角必要范围给出 $0<m\le45$。
+反过来，若 $0<m\le45$，直角通用构造 $t_R(m)$ 就是一个具有该最小角的直角三角形。
+因此第二条等价式的两个方向都成立。
+
+对于钝角情形，若存在最小角为 $m$ 的钝角三角形，则必要范围给出 $0<m<45$。
+反过来，若 $0<m<45$，钝角通用构造 $t_O(m)$ 提供所需的三角形。
+因此第三条等价式的两个方向也都成立。
+\end{proof}
+
+\begin{remark}[存在命题不能改成所有命题]
+第一条等价式说明：每个 $0<m\le60$ 都能作为某个锐角三角形的最小角。
+它没有说明所有具有这个最小角的三角形都是锐角三角形。
+例如 $m=30$ 时，三种类型都存在，因此“存在一个锐角三角形”为真，而“所有对应三角形都锐角”为假。
+\end{remark}
+
+\chapter{量词：何时能由最小角保证类型}
+\label{math:quantifiers}
+
+\section{存在一个与全部成立}
+
+固定一个可行最小角 $m$，即 $0<m\le60$。
+考虑所有以它为最小角的角度三元组
+\[
+\mathcal T_m=\{t\in\mathcal T:m(t)=m\}.
+\]
+因为锐角通用构造 $t_A(m)$ 属于这个集合，所以 $\mathcal T_m$ 不是空集。
+
+“可以是锐角三角形”表示在这个集合中能找到至少一个锐角三角形：
+\[
+\exists t\in\mathcal T_m,\ A(t).
+\]
+“一定是锐角三角形”表示这个集合中的每一个三角形都是锐角三角形：
+\[
+\forall t\in\mathcal T_m,\ A(t).
+\]
+只找到一个符合条件的锐角三角形，可以证明前一个存在命题；要证明后一个全称命题，则必须说明任意一个符合条件的三角形都满足结论。
+
+\section{能够保证锐角的最小角恰好是大于45度的那些角}
+
+\begin{theorem}[仅凭最小角保证锐角的精确条件]
+设 $0<m\le60$。则
+\[
+\bigl[\forall t\in\mathcal T,\ m(t)=m\Longrightarrow A(t)\bigr]
+\Longleftrightarrow m>45.
+\]
+\end{theorem}
+
+\begin{proof}[证明]
+先证明从右向左的方向。假设 $m>45$，任取一个满足 $m(t)=m$ 的三角形 $t$。
+它的最小角满足 $m(t)>45$。由前面证明的充分条件，$t$ 为锐角三角形。
+由于这个 $t$ 是任意选取的，所以所有最小角为 $m$ 的三角形都是锐角三角形。
+
+再证明从左向右的方向。假设所有最小角为 $m$ 的三角形都是锐角三角形。
+我们需要证明 $m>45$。
+如果这个不等式不成立，实数的大小关系给出 $m\le45$。
+结合原先的 $m>0$，可以构造直角三角形
+\[
+t_R(m)=(m,90-m,90).
+\]
+它的最小角是 $m$。根据当前全称假设，它应当是锐角三角形，因而它的最大角必须小于 $90$。
+但它的最大角按照构造恰好等于 $90$，于是会得到 $90<90$，这不成立。
+所以 $m\le45$ 的假设被排除，必须有 $m>45$。
+两个方向均已证明。
+\end{proof}
+
+\begin{remark}[为什么写明可行范围]
+若 $m\le0$ 或 $m>60$，就不存在最小角为 $m$ 的三角形。
+在这种情况下，命题
+\[
+\forall t\in\mathcal T,\ m(t)=m\Longrightarrow A(t)
+\]
+的前提 $m(t)=m$ 对每个三角形都不能成立，因此没有任何三角形能构成这个全称命题的反例。
+形式逻辑将这种情况称为“空真”。
+例如取 $m=0$，上述全称命题空真，而 $m>45$ 为假；所以不加可行性条件的等价式会失败。
+本书先规定 $0<m\le60$，就是为了讨论确实能够作为三角形最小角的数值。
+\end{remark}
+
+\section{任何可行最小角都不能保证直角或钝角}
+
+\begin{theorem}[不能仅凭最小角保证直角或钝角]
+设 $0<m\le60$，则
+\begin{align*}
+&\neg\bigl[\forall t\in\mathcal T,\ m(t)=m\Longrightarrow R(t)\bigr],\\
+&\neg\bigl[\forall t\in\mathcal T,\ m(t)=m\Longrightarrow O(t)\bigr].
+\end{align*}
+\end{theorem}
+
+\begin{proof}[证明]
+对这个固定的 $m$，取锐角通用构造
+\[
+t_A(m)=\left(m,90-\frac m2,90-\frac m2\right).
+\]
+前面已经证明它的最小角为 $m$，而且三个角都小于 $90$。
+因此它没有等于 $90$ 的角，也没有大于 $90$ 的角，既不属于直角类型，也不属于钝角类型。
+
+如果假设所有最小角为 $m$ 的三角形都直角，那么 $t_A(m)$ 也必须直角，与刚才的结论冲突。
+所以第一个全称命题为假。
+
+如果假设所有最小角为 $m$ 的三角形都钝角，那么 $t_A(m)$ 也必须钝角，同样与刚才的结论冲突。
+所以第二个全称命题也为假。
+\end{proof}
+
+\begin{remark}[不能保证不等于不可能出现]
+“最小角不能保证直角”并没有排除直角三角形的存在。
+当 $0<m\le45$ 时，既能构造最小角为 $m$ 的直角三角形，也能构造最小角为 $m$ 的锐角三角形。
+正是后一种三角形的存在，使“所有对应三角形都直角”的断言失败。
+钝角情形也一样：当 $0<m<45$ 时，钝角三角形可以出现，但锐角三角形也可以出现，所以不能保证钝角。
+\end{remark}
+
+\chapter{七个错误反推的完整反例论证}
+\label{math:counterexamples}
+
+\section{逻辑上的“不能推出”如何证明}
+
+若希望反驳全称命题
+\[
+\forall t\in\mathcal T,\ P(t)\Longrightarrow Q(t),
+\]
+需要找到一个满足 $P(t)$ 而不满足 $Q(t)$ 的三角形。
+因此，反例论证对应的逻辑形式为
+\[
+\boxed{
+\begin{gathered}
+\neg\bigl[\forall t\in\mathcal T,\ P(t)\Longrightarrow Q(t)\bigr]\\
+\Longleftrightarrow\\
+\exists t\in\mathcal T,\ P(t)\land\neg Q(t).
+\end{gathered}}
+\]
+一个反例已经足以推翻“所有三角形都满足”的断言。
+
+这个表达式不同于
+\[
+\forall t\in\mathcal T,\ P(t)\Longrightarrow\neg Q(t).
+\]
+后一个命题要求每个满足 $P$ 的三角形都不满足 $Q$；它与只需找到一个反例的陈述不同。
+例如，“最小角为 $45$ 不能保证锐角”是真命题，因为 $(45,45,90)$ 是反例；
+但“最小角为 $45$ 的三角形都不是锐角三角形”是假命题，因为 $(45,60,75)$ 是锐角三角形。
+
+\section{反例一：锐角三角形的最小角未必大于45度}
+
+\begin{example}[否定锐角类型的错误反推]
+待反驳的命题是
+\[
+\forall t\in\mathcal T,\ A(t)\Longrightarrow m(t)>45.
+\]
+取 $t=(30,75,75)$。
+它满足 $0<30\le75\le75$，并且
+\[
+30+75+75=180.
+\]
+所以它属于 $\mathcal T$。
+三个角都小于 $90$，故 $A(t)$ 为真；最小角为 $30$，而 $30>45$ 为假。
+因此这个全称命题不成立。
+\end{example}
+
+\section{反例二：最小角不超过60度未必锐角}
+
+\begin{example}[否定通用范围的错误反推]
+待反驳的命题是
+\[
+\forall t\in\mathcal T,\ 0<m(t)\le60\Longrightarrow A(t).
+\]
+取 $t=(30,60,90)$。
+三个角满足 $0<30\le60\le90$，并且 $30+60+90=180$。
+最小角为 $30$，满足 $0<30\le60$；但最大角为 $90$，不满足锐角类型要求的最大角小于 $90$。
+因此前提成立而结论不成立，这个全称命题为假。
+\end{example}
+
+\section{反例三：最小角不超过45度未必直角}
+
+\begin{example}[否定直角最小角必要条件的逆命题]
+待反驳的命题是
+\[
+\forall t\in\mathcal T,\ 0<m(t)\le45\Longrightarrow R(t).
+\]
+取 $t=(30,75,75)$。
+它的角度和为 $180$，正性与排序均满足要求。
+最小角 $30$ 满足 $0<30\le45$，但是三个角分别为 $30$、$75$、$75$，没有一个角等于 $90$。
+所以 $R(t)$ 为假，该全称命题不能成立。
+\end{example}
+
+\section{反例四：最小角小于45度未必钝角}
+
+\begin{example}[否定钝角最小角必要条件的逆命题]
+待反驳的命题是
+\[
+\forall t\in\mathcal T,\ 0<m(t)<45\Longrightarrow O(t).
+\]
+取 $t=(30,75,75)$。
+这个合法的角度三元组满足 $0<m(t)=30<45$。
+它的最大角是 $75<90$，因此没有钝角，$O(t)$ 为假。
+所以最小角小于 $45$ 不能保证钝角三角形。
+\end{example}
+
+\section{反例五：最小角小于45度也未必锐角}
+
+\begin{example}[否定小最小角保证锐角的说法]
+待反驳的命题是
+\[
+\forall t\in\mathcal T,\ 0<m(t)<45\Longrightarrow A(t).
+\]
+取 $t=(30,40,110)$。
+它满足 $0<30\le40\le110$，并且
+\[
+30+40+110=180.
+\]
+最小角为 $30$，满足前提；最大角为 $110>90$，所以它是钝角三角形，不是锐角三角形。
+这就反驳了该全称命题。
+\end{example}
+
+\section{反例六：最小角等于45度未必锐角}
+
+\begin{example}[边界值的直角反例]
+待反驳的命题是
+\[
+\forall t\in\mathcal T,\ m(t)=45\Longrightarrow A(t).
+\]
+取 $t=(45,45,90)$。
+它满足正性和排序，三个角的和为 $45+45+90=180$。
+最小角确实等于 $45$；但最大角为 $90$，故它为直角三角形，不满足 $A(t)$。
+因此不能把充分条件 $m>45$ 中的严格不等号直接改成 $m\ge45$。
+\end{example}
+
+\section{反例七：最小角等于45度未必直角}
+
+\begin{example}[边界值的锐角反例]
+待反驳的命题是
+\[
+\forall t\in\mathcal T,\ m(t)=45\Longrightarrow R(t).
+\]
+取 $t=(45,60,75)$。
+它满足 $0<45\le60\le75$，三个角的和为 $45+60+75=180$。
+最小角等于 $45$，但三个角都小于 $90$，没有任何直角，所以 $R(t)$ 为假。
+因此，最小角恰好等于 $45$ 时，只能保证“锐角或直角”，不能单独保证其中一种。
+\end{example}
+
+\section{与 Lean 判定的对应方式}
+
+在后续代码中，正确的普遍性结论都写成定理，给出 Lean 可以检查的证明。
+上述七个错误的全称命题则各自取否定，再用相应的具体三角形证明其否定。
+这样，“判断对错”具有两种明确的证明结果：要么证明原命题，要么证明其否定。
+仅仅因为某个证明策略没有找到证明，并不能推出原命题是假的。
+
+
+\chapter{区间图与典型三角形}
+\label{chap:visuals}
+
+\section{最小角的可能范围为何重叠}
+
+图\ref{fig:min-ranges}的前三行表示“某类三角形的最小角所有可能取值”，最后一行表示“只知道最小角就能保证锐角”的范围。实心端点表示允许取到，空心端点表示不能取到。两者虽然都在研究最小角，所用量词不同。
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=0.14cm,y=1cm,font=\small]
+  \draw[-{Stealth[length=2mm]}] (-2,0) -- (66,0) node[right] {$m$};
+  \foreach \x in {0,30,45,60} {
+    \draw (\x,0.08)--(\x,-0.08);
+    \node[above] at (\x,0.12) {$\x^\circ$};
+  }
+  \foreach \x in {0,45,60} {\draw[gray!45,densely dashed] (\x,-0.15)--(\x,-3.85);}
+  \node[anchor=east] at (-3,-0.8) {锐角：可能};
+  \node[anchor=east] at (-3,-1.65) {直角：可能};
+  \node[anchor=east] at (-3,-2.5) {钝角：可能};
+  \node[anchor=east] at (-3,-3.5) {保证锐角};
+  \draw[line width=1.1pt] (0,-0.8)--(60,-0.8);
+  \draw[line width=1.1pt] (0,-1.65)--(45,-1.65);
+  \draw[line width=1.1pt] (0,-2.5)--(45,-2.5);
+  \draw[line width=1.6pt] (45,-3.5)--(60,-3.5);
+  \foreach \y in {-0.8,-1.65,-2.5} {\draw[fill=white,line width=0.8pt] (0,\y) circle[radius=2.5pt];}
+  \fill (60,-0.8) circle[radius=2.5pt];
+  \fill (45,-1.65) circle[radius=2.5pt];
+  \draw[fill=white,line width=0.8pt] (45,-2.5) circle[radius=2.5pt];
+  \draw[fill=white,line width=0.8pt] (45,-3.5) circle[radius=2.5pt];
+  \fill (60,-3.5) circle[radius=2.5pt];
+\end{tikzpicture}
+\caption{最小角的存在范围与保证范围。前三行互有重叠，因此不能直接倒推类型。}
+\label{fig:min-ranges}
+\end{figure}
+
+例如，竖线 $m=30^\circ$ 同时穿过前三条线段，表示三种类型分别都存在。竖线 $m=45^\circ$ 穿过锐角线段与直角线段的实心端点，却不属于钝角线段，也不属于“保证锐角”的线段。超过 $45^\circ$ 后，只有锐角类型仍然可能，因此此时能保证锐角。
+
+\section{相同最小角，三种类型}
+
+图\ref{fig:three-triangles}给出正文反例中反复使用的三个三角形。它们都以 $30^\circ$ 为最小角，却分别为锐角、直角和钝角三角形。图形按标注角度构造，直角处标有完整直角符号。
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[scale=0.86,font=\small,line join=round]
+  \begin{scope}
+    \coordinate (A) at (0,0);
+    \coordinate (B) at (4,0);
+    \coordinate (C) at ({4*sin(75)*cos(30)/sin(105)},{4*sin(75)*sin(30)/sin(105)});
+    \draw[thick] (A)--(B)--(C)--cycle;
+    \pic[draw,angle radius=9mm,angle eccentricity=1.4,"$30^\circ$"] {angle=B--A--C};
+    \pic[draw,angle radius=5mm,angle eccentricity=1.45,"$75^\circ$"] {angle=C--B--A};
+    \pic[draw,angle radius=5mm,angle eccentricity=1.45,"$75^\circ$"] {angle=A--C--B};
+    \node at (2,-0.65) {锐角三角形};
+  \end{scope}
+  \begin{scope}[xshift=5.4cm]
+    \coordinate (A) at (0,0);
+    \coordinate (B) at (4,0);
+    \coordinate (C) at (3,{sqrt(3)});
+    \draw[thick] (A)--(B)--(C)--cycle;
+    \pic[draw,angle radius=9mm,angle eccentricity=1.4,"$30^\circ$"] {angle=B--A--C};
+    \pic[draw,angle radius=5mm,angle eccentricity=1.45,"$60^\circ$"] {angle=C--B--A};
+    \pic[draw,angle radius=3mm] {right angle=A--C--B};
+    \node[above=2mm] at (C) {$90^\circ$};
+    \node at (2,-0.65) {直角三角形};
+  \end{scope}
+  \begin{scope}[xshift=10.8cm]
+    \coordinate (A) at (0,0);
+    \coordinate (B) at (4,0);
+    \coordinate (C) at ({4*sin(40)*cos(30)/sin(70)},{4*sin(40)*sin(30)/sin(70)});
+    \draw[thick] (A)--(B)--(C)--cycle;
+    \pic[draw,angle radius=9mm,angle eccentricity=1.4,"$30^\circ$"] {angle=B--A--C};
+    \pic[draw,angle radius=8mm,angle eccentricity=1.45,"$40^\circ$"] {angle=C--B--A};
+    \pic[draw,angle radius=4mm] {angle=A--C--B};
+    \node[above=2mm] at (C) {$110^\circ$};
+    \node at (2,-0.65) {钝角三角形};
+  \end{scope}
+\end{tikzpicture}
+\caption{最小角同为 $30^\circ$，三角形类型仍可不同。}
+\label{fig:three-triangles}
+\end{figure}
+
+这些具体见证可以否定某个错误的全称命题，但单独列举它们，还不足以证明“每个 $0<m<45$ 都有三种可能”。后一个结论需要正文已经给出的三个关于 $m$ 的通用构造。
+
+\section{最大角的范围为何能够双向判断}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=0.075cm,y=1cm,font=\small]
+  \draw[-{Stealth[length=2mm]}] (53,0)--(187,0) node[right] {$M$};
+  \foreach \x in {60,90,120,150,180} {
+    \draw (\x,0.08)--(\x,-0.08);
+    \node[above] at (\x,0.12) {$\x^\circ$};
+  }
+  \node[anchor=east] at (53,-0.8) {锐角};
+  \node[anchor=east] at (53,-1.6) {直角};
+  \node[anchor=east] at (53,-2.4) {钝角};
+  \draw[line width=1.1pt] (60,-0.8)--(90,-0.8);
+  \fill (60,-0.8) circle[radius=2.5pt];
+  \draw[fill=white,line width=0.8pt] (90,-0.8) circle[radius=2.5pt];
+  \fill (90,-1.6) circle[radius=2.8pt];
+  \draw[line width=1.1pt] (90,-2.4)--(180,-2.4);
+  \draw[fill=white,line width=0.8pt] (90,-2.4) circle[radius=2.5pt];
+  \draw[fill=white,line width=0.8pt] (180,-2.4) circle[radius=2.5pt];
+\end{tikzpicture}
+\caption{最大角的三个范围互不重叠，并且覆盖全部可行范围 $[60^\circ,180^\circ)$。}
+\label{fig:max-ranges}
+\end{figure}
+
+图\ref{fig:max-ranges}中的每一个可行度数只属于一行，因此最大角能唯一确定类型。这里“能唯一确定”的依据仍是前面的三个充要条件，图只是把这些已经证明的关系画出来。
+
+\chapter{只知道任意一个内角}
+\label{chap:arbitrary-angle}
+
+前面讨论的角带有“最小”或“最大”的限定。本章改为只知道“三角形中有一个角的度数为某个数”，并不说明这个角在三个角中排第几。题目若把这个数写成 $a$，本章统一改记为 $x$，以免与原模型中表示最小角的 $a$ 混淆。所有数值仍以度为单位。
+
+\section{先给出完整结论}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{|p{0.20\textwidth}|X|p{0.28\textwidth}|}
+\hline
+已知角的度数 & 可以出现的三角形类型 & 能否唯一确定类型\\
+\hline
+$0<x<90$ & 锐角、直角、钝角三类分别都能出现。 & 不能。\\
+\hline
+$x=90$ & 只有直角三角形。 & 一定是直角三角形。\\
+\hline
+$90<x<180$ & 只有钝角三角形。 & 一定是钝角三角形。\\
+\hline
+$x\le0$ 或 $x\ge180$ & 不存在满足条件的非退化三角形。 & 应判定已知条件不可行。\\
+\hline
+\end{tabularx}
+\end{center}
+
+因此，只知道任意一个内角时，能够保证直角的数值恰好是 $90$，能够保证钝角的范围恰好是 $(90,180)$。不存在某个可行数值 $x$，使“有一个内角等于 $x$”这一条信息就能保证三角形是锐角三角形。
+
+最后一句并不是说锐角三角形不存在。它说的是：对于每一个可行的 $x$，都能找到至少一个含有 $x$ 度角、但不是锐角三角形的反例。下面分别证明这些结论。
+
+\section{“包含这个角”与可行范围}
+
+对于有序角度三元组
+\[
+t=(a,b,c)\in\mathcal T,
+\qquad 0<a\le b\le c,\qquad a+b+c=180,
+\]
+定义条件
+\[
+H(t,x)\quad\Longleftrightarrow\quad
+a=x\ \lor\ b=x\ \lor\ c=x.
+\]
+它表示“三角形 $t$ 的某一个角等于 $x$”。这个析取允许 $x$ 出现在任意一个位置；它没有把条件缩小成 $a=x$，也没有把条件缩小成 $c=x$。
+
+\begin{proposition}[任意一个内角的可行范围]
+\label{prop:any-angle-feasible}
+存在一个含有 $x$ 度内角的非退化三角形，当且仅当
+\[
+0<x<180.
+\]
+\end{proposition}
+
+\begin{proof}
+先证必要性。若 $x$ 是其中一个角，另外两个角记为 $y,z$。由内角为正以及内角和条件，
+\[
+x>0,\qquad y>0,\qquad z>0,\qquad x+y+z=180.
+\]
+因为 $y+z>0$，所以
+\[
+x=180-(y+z)<180.
+\]
+合并两条不等式，得到 $0<x<180$。
+
+再证充分性。给定 $0<x<180$，取三个角的度数为
+\[
+x,\qquad \frac{180-x}{2},\qquad \frac{180-x}{2}.
+\]
+第一个数为正；因为 $x<180$，另外两个数也为正。它们的和为
+\[
+x+\frac{180-x}{2}+\frac{180-x}{2}
+=x+(180-x)=180.
+\]
+前面的几何实现论证说明，三个正数的和为 $180$ 时，它们能够成为一个非退化平面三角形的三个内角。若要放入有序模型 $\mathcal T$，把这三个数从小到大排列即可；排列不会改变三个数的正性、总和，也不会改变其中含有 $x$ 这一事实。
+\end{proof}
+
+\begin{remark}[本章构造的书写顺序]
+下面为了突出已知角，常把 $x$ 写在三元组的第一个位置。这只是列举三个角的书写顺序，并不承诺 $x$ 最小。需要使用有序模型时，再进行大小排序。
+\end{remark}
+
+\section{为什么直角和钝角能够直接判定}
+
+锐角三角形要求三个内角都小于 $90^\circ$；直角三角形要求有一个内角等于 $90^\circ$；钝角三角形要求有一个内角大于 $90^\circ$。这三个定义对“一个角”的要求不同。
+
+\begin{proposition}[已知角达到或超过 90 度]
+\label{prop:any-angle-large}
+若 $H(t,x)$ 成立，则
+\[
+x=90\ \Longrightarrow\ R(t),
+\qquad
+x>90\ \Longrightarrow\ O(t).
+\]
+\end{proposition}
+
+\begin{proof}
+若 $x=90$，这个三角形已经含有一个直角，所以满足直角三角形的定义。另外两个角的度数 $y,z$ 满足
+\[
+y+z=90,\qquad y>0,\qquad z>0.
+\]
+于是 $y=90-z<90$，$z=90-y<90$，另外两个角都是锐角。这也排除了另有钝角的可能。
+
+若 $x>90$，这个三角形已经含有一个钝角，所以满足钝角三角形的定义。另外两个角满足
+\[
+y+z=180-x<90.
+\]
+由于 $y,z>0$，有 $y<y+z<90$、$z<y+z<90$，另外两个角仍然都是锐角。
+\end{proof}
+
+相反，“有一个锐角”没有排除另外两个角中出现直角或钝角。事实上，任何非退化三角形至少有两个锐角：假如有两个角都不小于 $90^\circ$，它们的和就不小于 $180^\circ$，再加上第三个正角，总和将大于 $180^\circ$，与内角和条件矛盾。因此，知道“有一个锐角”本身不足以区分三种类型。
+
+\section{每一个锐角都对应三种可能}
+
+\begin{theorem}[给定任意锐角的三个通用构造]
+\label{thm:any-acute-three-types}
+对每一个固定的 $0<x<90$，都分别存在一个锐角三角形、一个直角三角形和一个钝角三角形，使它们各自含有一个 $x$ 度的内角。
+\end{theorem}
+
+\begin{proof}
+依次验证下面三个构造。
+
+\textbf{第一种：锐角三角形。}取三个角的度数为
+\[
+x,\qquad 90-\frac x2,\qquad 90-\frac x2.
+\]
+由 $0<x<90$ 得到 $0<x/2<45$，从而
+\[
+45<90-\frac x2<90.
+\]
+第一个角也满足 $0<x<90$，所以三个角都是正的锐角。它们的和为
+\[
+x+\left(90-\frac x2\right)+\left(90-\frac x2\right)
+=x+180-x=180.
+\]
+因此，这三个数给出一个含有 $x$ 度角的锐角三角形。
+
+\textbf{第二种：直角三角形。}取三个角的度数为
+\[
+x,\qquad 90-x,\qquad 90.
+\]
+由 $0<x<90$ 可得 $0<90-x<90$。三个角为正，且
+\[
+x+(90-x)+90=180.
+\]
+第三个角为 $90^\circ$，因此它是含有 $x$ 度角的直角三角形。
+
+\textbf{第三种：钝角三角形。}取三个角的度数为
+\[
+x,\qquad 45-\frac x2,\qquad 135-\frac x2.
+\]
+同样由 $0<x/2<45$ 得到
+\[
+0<45-\frac x2<45,
+\qquad
+90<135-\frac x2<135.
+\]
+三个角均为正，第三个角为钝角。内角和为
+\[
+x+\left(45-\frac x2\right)+\left(135-\frac x2\right)
+=x+180-x=180.
+\]
+所以它是含有 $x$ 度角的钝角三角形。
+
+三个构造都适用于任意一个 $0<x<90$。它们对应三个不同的三角形，证明了三类各自存在；没有要求同一个三角形同时属于三种类型。
+\end{proof}
+
+\begin{remark}[为什么不能只举 30 度或 60 度]
+列出某个固定角度的三个例子，只能证明那个角度对应三种可能。定理\ref{thm:any-acute-three-types}中的公式保留了参数 $x$，并逐条使用 $0<x<90$ 验证，所以覆盖整个区间中的每一个实数度数，而不限于整数角或几个常见角。
+\end{remark}
+
+\section{三类三角形中任意一个角的全部可能范围}
+
+“某类三角形中，一个角可以取哪些值”是存在性问题。它与“知道一个角就能保证哪一类”仍然不同。
+
+\begin{theorem}[任意角的三个存在范围]
+\label{thm:any-angle-existence}
+对于实数 $x$，有以下三个充要条件：
+\begin{align*}
+\bigl[\exists t\in\mathcal T,\ H(t,x)\land A(t)\bigr]
+&\Longleftrightarrow 0<x<90,\\
+\bigl[\exists t\in\mathcal T,\ H(t,x)\land R(t)\bigr]
+&\Longleftrightarrow 0<x\le90,\\
+\bigl[\exists t\in\mathcal T,\ H(t,x)\land O(t)\bigr]
+&\Longleftrightarrow
+\bigl(0<x<90\bigr)\lor\bigl(90<x<180\bigr).
+\end{align*}
+\end{theorem}
+
+\begin{proof}
+\textbf{锐角类型。}如果 $t$ 是锐角三角形，每个内角都大于 $0$ 且小于 $90$，所以其中的 $x$ 也满足 $0<x<90$。反过来，只要 $0<x<90$，定理\ref{thm:any-acute-three-types}的第一种构造就给出所需见证。
+
+\textbf{直角类型。}直角三角形有一个角等于 $90$，另外两个角是正数且和为 $90$，所以另外两个角分别小于 $90$。因此，它的任意一个内角 $x$ 都满足 $0<x\le90$。反过来，若 $0<x<90$，使用前面的第二种构造；若 $x=90$，使用三个角为 $(45,45,90)$ 的三角形。两种情况覆盖 $(0,90]$。
+
+\textbf{钝角类型。}若 $t$ 是钝角三角形，它有一个角大于 $90$，而另外两个角均小于 $90$。因而其中的任意一个角 $x$ 只能满足 $0<x<90$，或者满足 $90<x<180$；不可能等于 $90$。特别地，如果一个角等于 $90$、另一个角大于 $90$，仅这两个角的和就超过了 $180$，不符合三角形的内角和。
+
+反过来，若 $0<x<90$，前面的第三种构造已经给出钝角见证。若 $90<x<180$，取
+\[
+x,\qquad \frac{180-x}{2},\qquad \frac{180-x}{2}.
+\]
+这三个角均为正且和为 $180$；第一个角 $x$ 大于 $90$，所以是钝角三角形。于是两个开区间内的每个值都能实现。
+\end{proof}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=0.060cm,y=0.85cm,font=\small]
+  \draw[-{Stealth[length=2mm]}] (-3,0)--(188,0) node[right] {$x$};
+  \foreach \x in {0,90,180} {
+    \draw (\x,0.08)--(\x,-0.08);
+    \node[above] at (\x,0.12) {$\x^\circ$};
+    \draw[gray!45,densely dashed] (\x,-0.15)--(\x,-3.15);
+  }
+  \node[anchor=east] at (-7,-0.85) {锐角三角形中};
+  \node[anchor=east] at (-7,-1.8) {直角三角形中};
+  \node[anchor=east] at (-7,-2.75) {钝角三角形中};
+  \draw[line width=1.1pt] (0,-0.85)--(90,-0.85);
+  \draw[line width=1.1pt] (0,-1.8)--(90,-1.8);
+  \draw[line width=1.1pt] (0,-2.75)--(180,-2.75);
+  \foreach \y in {-0.85,-1.8,-2.75} {
+    \draw[fill=white,line width=0.8pt] (0,\y) circle[radius=2.5pt];
+  }
+  \draw[fill=white,line width=0.8pt] (90,-0.85) circle[radius=2.5pt];
+  \fill (90,-1.8) circle[radius=2.5pt];
+  \draw[fill=white,line width=0.8pt] (90,-2.75) circle[radius=2.5pt];
+  \draw[fill=white,line width=0.8pt] (180,-2.75) circle[radius=2.5pt];
+\end{tikzpicture}
+\caption{三类三角形中任意一个内角的可能取值。实心端点表示允许取到，空心端点表示不能取到；横轴是任意一个角 $x$，不是最大角。}
+\label{fig:any-angle-ranges}
+\end{figure}
+
+图\ref{fig:any-angle-ranges}中，钝角三角形一行在 $90$ 处留有空心点。这一行同时包含 $(0,90)$ 和 $(90,180)$：钝角三角形有两个锐角和一个钝角，因此任意抽取其中一个角时，抽到的角也可能是锐角。
+
+\section{哪些角度能够保证类型}
+
+固定一个可行值 $0<x<180$，令
+\[
+\mathcal S_x=\{t\in\mathcal T:H(t,x)\}.
+\]
+命题\ref{prop:any-angle-feasible}已经证明 $\mathcal S_x$ 非空。
+“只知道一个角是 $x$，就一定属于某类”要求 $\mathcal S_x$ 中的每一个三角形都属于该类；“这一类中可以有 $x$ 角”只要求在 $\mathcal S_x$ 中找到一个该类三角形。
+
+\begin{theorem}[任意角的三个保证性结论]
+\label{thm:any-angle-guarantees}
+设 $0<x<180$，则
+\begin{align*}
+&\neg\bigl[\forall t\in\mathcal T,\ H(t,x)\Rightarrow A(t)\bigr],\\
+&\bigl[\forall t\in\mathcal T,\ H(t,x)\Rightarrow R(t)\bigr]
+\Longleftrightarrow x=90,\\
+&\bigl[\forall t\in\mathcal T,\ H(t,x)\Rightarrow O(t)\bigr]
+\Longleftrightarrow x>90.
+\end{align*}
+\end{theorem}
+
+\begin{proof}
+\textbf{第一条：不存在仅凭一个角就能保证锐角的可行值。}
+若 $0<x<90$，取三个角为 $(x,90-x,90)$ 的直角三角形；它含有 $x$ 角，却不是锐角三角形。
+若 $x=90$，取 $(45,45,90)$，仍得到反例。
+若 $90<x<180$，取
+\[
+\left(x,\frac{180-x}{2},\frac{180-x}{2}\right),
+\]
+得到含有 $x$ 角的钝角三角形，它也不是锐角三角形。
+三个分支覆盖整个可行范围，所以每个可行 $x$ 都有反例。
+
+\textbf{第二条：保证直角当且仅当 $x=90$。}
+若 $x=90$，任何含有这个角的三角形都符合直角三角形的定义。
+反过来，假设所有含有 $x$ 角的三角形都是直角三角形。若 $x<90$，定理\ref{thm:any-acute-three-types}的第一种构造给出含有 $x$ 角的锐角三角形，与假设矛盾。若 $x>90$，上一段的钝角构造也与假设矛盾。因此，只剩 $x=90$。
+
+\textbf{第三条：保证钝角当且仅当 $x>90$。}
+若 $x>90$，任何含有这个角的三角形都符合钝角三角形的定义。
+反过来，假设所有含有 $x$ 角的三角形都是钝角三角形。若 $x<90$，第一种构造给出一个锐角三角形作为反例。若 $x=90$，$(45,45,90)$ 是直角反例。因此 $x$ 既不能小于 $90$，也不能等于 $90$，故 $x>90$。
+\end{proof}
+
+这里的 $0<x<180$ 不能删去。若 $x$ 不在可行范围内，根本没有含有 $x$ 角的三角形，关于“所有这样的三角形”的全称命题会因为没有反例而空真。做几何分类题时，应先排除这种不存在对象的情况。
+
+\section{逻辑箭头与三类已知条件的对照}
+
+对一个实际存在的三角形，若只知道它含有 $x$ 度角，可以写成
+\[
+\boxed{x=90\Rightarrow\text{直角三角形}},
+\qquad
+\boxed{x>90\Rightarrow\text{钝角三角形}}.
+\]
+但
+\[
+\text{有一个锐角}\ \nRightarrow\ \text{锐角三角形}.
+\]
+这里的“不能推出”表示这条全称推理存在反例；它不是说有一个锐角就一定不是锐角三角形。
+
+还应区分下面两种写法。对某一个已经固定的三角形 $t$，下面这个反向推理一般不成立：
+\[
+R(t)\Rightarrow x=90
+\]
+因为这个被指定的 $x$ 可能是直角三角形中的锐角。类似地，$O(t)\Rightarrow x>90$ 一般不成立，因为 $x$ 可能是钝角三角形中的某一个锐角。定理\ref{thm:any-angle-guarantees}中的双向箭头，左边是“所有含有 $x$ 角的三角形都属于该类”，不能把这个全称条件省略成一个三角形的类型。
+
+\begin{center}
+\begin{tabularx}{\textwidth}{|p{0.20\textwidth}|X|X|X|}
+\hline
+题目给出的角 & 仅凭该角保证锐角 & 仅凭该角保证直角 & 仅凭该角保证钝角\\
+\hline
+任意一个角 $x$ & 无这样的可行值 & $x=90$ & $90<x<180$\\
+\hline
+最小角 $m$ & $45<m\le60$ & 无这样的可行值 & 无这样的可行值\\
+\hline
+最大角 $M$ & $60\le M<90$ & $M=90$ & $90<M<180$\\
+\hline
+\end{tabularx}
+\end{center}
+
+表中“无这样的可行值”的意思是：这一条角度信息不足以保证指定类型，并不是说指定类型的三角形不存在。特别地，“一个角大于 $45^\circ$”不能代替“最小角大于 $45^\circ$”；只有后者同时保证另外两个角也大于 $45^\circ$，才能借助内角和把最大角压到 $90^\circ$ 以下。
+
+\section{例题与逐步解析}
+
+\begin{example}[同样是 60 度，限定词改变了结论]
+分别判断以下三种已知条件能够确定什么：一个角为 $60^\circ$；最小角为 $60^\circ$；最大角为 $60^\circ$。
+\end{example}
+
+\begin{proof}[解析]
+若只知道一个角为 $60^\circ$，下面三组三个角都为正，且内角和为 $180^\circ$：
+\[
+(60,60,60),\qquad(60,30,90),\qquad(60,20,100).
+\]
+它们分别是锐角、直角、钝角三角形，所以不能唯一确定类型。
+
+若最小角为 $60^\circ$，三个角都不小于 $60^\circ$。设另两个角为 $60+u$、$60+v$，其中 $u,v\ge0$。由内角和得到
+\[
+60+(60+u)+(60+v)=180
+\quad\Longrightarrow\quad u+v=0.
+\]
+两个非负数的和为零，故 $u=v=0$，三个角都是 $60^\circ$。
+
+若最大角为 $60^\circ$，三个角都不大于 $60^\circ$。设另两个角为 $60-u$、$60-v$，其中 $u,v\ge0$。内角和给出
+\[
+60+(60-u)+(60-v)=180
+\quad\Longrightarrow\quad u+v=0.
+\]
+同样得到 $u=v=0$，三个角也都是 $60^\circ$。后两种条件都确定了等角三角形，因而它是锐角三角形。
+\end{proof}
+
+\begin{example}[一个角大于 45 度是否足够]
+已知一个内角为 $80^\circ$。某同学说：“$80^\circ>45^\circ$，所以一定是锐角三角形。”判断这句话是否正确。
+\end{example}
+
+\begin{proof}[解析]
+这句话把“一个角”误当成了“最小角”。取
+\[
+(80,10,90),
+\]
+三个角均为正，且 $80+10+90=180$，其中有一个直角。它符合已知条件，却不是锐角三角形，已经足以否定“一定”的说法。
+
+进一步，三个通用构造在 $x=80$ 时分别给出
+\[
+(80,50,50),\qquad(80,10,90),\qquad(80,5,95).
+\]
+第一组三个角都小于 $90$，第二组含有 $90$，第三组含有 $95>90$。因此，对这个固定的 $80^\circ$，三种类型也确实分别都可能。
+\end{proof}
+
+\begin{example}[把等号与严格大于分开]
+已知三角形中有一个角不小于 $90^\circ$，能否确定它一定是直角三角形，或一定是钝角三角形？若改为有一个角大于 $90^\circ$，结论怎样变化？
+\end{example}
+
+\begin{proof}[解析]
+“不小于 $90^\circ$”包含等于和大于两个分支。$(90,45,45)$ 满足条件，是直角三角形；$(100,40,40)$ 也满足条件，是钝角三角形。因此不能只确定其中一种类型，但可以确定它不是锐角三角形，即
+\[
+\text{有一个角}\ge90^\circ
+\quad\Longrightarrow\quad
+\text{直角三角形或钝角三角形}.
+\]
+若条件改为“有一个角大于 $90^\circ$”，等号分支被排除。这个角本身就是钝角，所以一定是钝角三角形。
+\end{proof}
+
+做这类题时，可依次检查三个问题：第一，题目说的是任意一个角、最小角还是最大角；第二，所给度数是否可行；第三，题目要求“存在某种类型”，还是要求“所有符合条件的三角形都属于某种类型”。前两项决定可使用的角度关系，第三项决定应当作构造，还是证明普遍结论并寻找可能的反例。
+
+\chapter{从数学论证到 Lean 形式化}
+\label{chap:lean-explanation}
+
+本章把前面的数学论证与附件中的 Lean 源码逐一对应。数学部分负责说明为什么结论成立；形式化部分把对象、条件、结论和证明步骤写得足够精确，使 Lean 能够检查每一步是否符合所使用的逻辑规则。本书的完整源码共有 57 个定理。它既证明成立的蕴含与等价，也证明若干错误反推的否定。
+
+这里的“检查”有明确含义：向 Lean 提交命题和证明，由 Lean 核查证明能否得到该命题。某个自动化策略没有完成证明，只能说明这次尝试未成功，不能据此断定数学命题为假。要认定一个全称命题不成立，仍需要给出反例，或完成其否定命题的证明。Lean 官方教材对命题、证明及逻辑联结词的说明可参见其“Propositions and Proofs”一章。\footnote{\url{https://lean-lang.org/theorem_proving_in_lean4/Propositions-and-Proofs/}}
+
+\section{先把研究对象写清楚}
+
+\subsection{实数角度与度数单位}
+
+本书的角度使用实数，代码中的 \texttt{ℝ} 表示实数类型。因此，论证不限于整数度，也包括分数度数、无理数度数等情形。代码中的常数 \texttt{90} 和 \texttt{180} 分别表示 $90^\circ$ 和 $180^\circ$ 的数值。程序没有把单位另写成一个类型；“角度数值采用度数”是本模型的约定。
+
+任取一个非退化平面三角形，把它的三个内角从小到大记为
+\[
+0<a\le b\le c,\qquad a+b+c=180.
+\]
+这样，最小角是 $m=a$，最大角是 $M=c$。本题讨论的性质不受三个角重新排列的影响，所以采用有序表示不会改变所研究的角度范围与类型问题。
+
+Lean 中的结构定义为：
+\begin{Verbatim}[fontsize=\small,breaklines=true]
+structure Triangle where
+  a : ℝ
+  b : ℝ
+  c : ℝ
+  a_pos : 0 < a
+  ab : a ≤ b
+  bc : b ≤ c
+  angle_sum : a + b + c = 180
+\end{Verbatim}
+
+这段定义要求每一个 \texttt{Triangle} 对象同时提供三项数值与四项证明。它们的含义如下。
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+字段 & 数学含义\\
+\midrule
+\texttt{a}, \texttt{b}, \texttt{c} & 三个实数角度。\\
+\texttt{a\_pos} & 最小角严格大于零。\\
+\texttt{ab} & 第一个角不大于第二个角。\\
+\texttt{bc} & 第二个角不大于第三个角。\\
+\texttt{angle\_sum} & 三个角的和等于 $180^\circ$。\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+不需要再把 $b>0$ 和 $c>0$ 写成额外字段，因为已有
+\[
+b\ge a>0,\qquad c\ge b>0.
+\]
+同样，$a\le60$、$c\ge60$、$c<180$ 都没有被放入结构定义。这些是随后需要证明的结论。这样的安排避免了把待证结论偷偷当成假设。
+
+\subsection{本次形式化覆盖到哪里}
+
+结构 \texttt{Triangle} 是有序内角的数值模型。文件证明的是：满足正性、排序和内角和条件的实数三元组，其最小角、最大角及类型之间具有所述关系。
+
+文件没有定义欧氏平面中的点、线段、距离、夹角或坐标三角形，也没有在 Lean 内另外实现“任意三个正角之和为 $180^\circ$，都可以在欧氏平面构成三角形”的几何构造。因而，不能把这份代码描述成已经形式化了整套欧几里得几何。本题的角度分类问题只用到上述数值条件，这一模型足以承载本书给出的全部角度不等式论证。
+
+\section{三角形类型使用原始定义}
+
+三个类型并没有直接用最大角来定义，而是使用通常的定义：
+
+\begin{Verbatim}[fontsize=\small,breaklines=true]
+def Acute (t : Triangle) : Prop :=
+  t.a < 90 ∧ t.b < 90 ∧ t.c < 90
+
+def Right (t : Triangle) : Prop :=
+  t.a = 90 ∨ t.b = 90 ∨ t.c = 90
+
+def Obtuse (t : Triangle) : Prop :=
+  90 < t.a ∨ 90 < t.b ∨ 90 < t.c
+\end{Verbatim}
+
+这里的 \texttt{Prop} 表示“命题”。例如，\texttt{Acute t} 表示关于三角形 \texttt{t} 的命题“三个角都小于 $90^\circ$”，而不是一个近似计算的浮点判断结果。
+
+以直角类型为例，定义允许直角出现在任意一个角的位置。定理 \texttt{right\_iff\_max} 才证明它只能位于最大角位置。这个证明分为三个分支：
+\begin{enumerate}
+\item 若 $a=90$，则与已证明的 $a\le60$ 矛盾。
+\item 若 $b=90$，则 $c\ge b=90$，再加上 $a>0$，得到 $a+b+c>180$，与内角和条件矛盾。
+\item 若 $c=90$，已经得到所需结论。
+\end{enumerate}
+反过来，若 $c=90$，三个角中存在直角，因此满足 \texttt{Right t}。这才得到真正经过论证的充要条件。
+
+锐角与钝角的最大角判据也在定义之后独立证明。依赖顺序是“结构条件、类型定义、基础范围、分类定理”，并不存在用某个判据证明自身的循环。
+
+\section{逻辑箭头、量词和反例}
+
+\subsection{符号对照}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lllX@{}}
+\toprule
+数学符号 & Lean 写法 & 名称 & 含义\\
+\midrule
+$P\Rightarrow Q$ & \texttt{P → Q} & 蕴含 & 假定 $P$，证明 $Q$。\\
+$P\Leftrightarrow Q$ & \texttt{P ↔ Q} & 等价 & 两个方向的蕴含都成立。\\
+$P\land Q$ & \texttt{P ∧ Q} & 合取 & 两个命题都成立。\\
+$P\lor Q$ & \texttt{P ∨ Q} & 析取 & 至少一个命题成立。\\
+$\neg P$ & \texttt{¬ P} & 否定 & 从 $P$ 可以推出矛盾。\\
+$\forall t,\ P(t)$ & \texttt{∀ t, P t} & 全称量词 & 每一个对象都满足性质。\\
+$\exists t,\ P(t)$ & \texttt{∃ t, P t} & 存在量词 & 至少有一个对象满足性质。\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+例如，定理声明中的
+\[
+\texttt{(t : Triangle)}
+\]
+表示 \texttt{t} 是任意一个满足结构条件的三角形。若结论写成 \texttt{45 < t.a → Acute t}，整个定理相当于说
+\[
+\forall t\in\mathcal T,\qquad a(t)>45\Longrightarrow \operatorname{Acute}(t),
+\]
+其中 $\mathcal T$ 是所有有序角度三角形构成的类型。
+
+\subsection{“不能推出”不是“推出否定”}
+
+讨论某一个数学规律是否普遍成立时，“$P$ 不能保证 $Q$”应表达为
+\[
+\neg\bigl(\forall t\in\mathcal T,\ P(t)\Rightarrow Q(t)\bigr).
+\]
+在经典逻辑中，它等价于存在反例：
+\[
+\exists t\in\mathcal T,\qquad P(t)\land\neg Q(t).
+\]
+
+代码采取的写法是：
+\begin{Verbatim}[fontsize=\small,breaklines=true]
+¬ (∀ t : Triangle, P t → Q t)
+\end{Verbatim}
+
+它不等于下面这个强得多的命题：
+\begin{Verbatim}[fontsize=\small,breaklines=true]
+∀ t : Triangle, P t → ¬ Q t
+\end{Verbatim}
+
+后者要求：每一个满足 $P$ 的三角形都不满足 $Q$。例如，设 $P$ 表示“最小角不超过 $45^\circ$”，$Q$ 表示“直角三角形”。$(30^\circ,75^\circ,75^\circ)$ 是锐角三角形，而 $(30^\circ,60^\circ,90^\circ)$ 是直角三角形。因此，既不能说这个前提保证直角，也不能说它保证非直角。正确说法是：该前提不足以唯一确定类型。
+
+\subsection{“可能”与“一定”需要不同量词}
+
+固定一个实数 $m$。“可能是锐角三角形”对应
+\begin{Verbatim}[fontsize=\small,breaklines=true]
+∃ t : Triangle, Acute t ∧ t.a = m
+\end{Verbatim}
+而“只要最小角是 $m$，就一定是锐角三角形”对应
+\begin{Verbatim}[fontsize=\small,breaklines=true]
+∀ t : Triangle, t.a = m → Acute t
+\end{Verbatim}
+
+前者是在具有给定最小角的所有三角形中寻找一个见证；后者要求同一集合中的每个对象都满足条件。文件中的 \texttt{acute\_min\_exists\_iff} 与 \texttt{guarantees\_acute\_iff} 正好分别处理这两个问题。
+
+当讨论“一定”时还要注意可行范围。如果根本没有最小角为 $m$ 的三角形，则“每个最小角为 $m$ 的三角形都锐角”会因不存在反例而成立，这称为全称命题的空真。为使问题确实涉及三角形，书中的保证性定理先限定
+\[
+0<m\le60.
+\]
+这一范围表示相应对象确实可以存在，不应在解释结论时省略。
+
+\clearpage
+\section{读懂证明代码所需的基本语句}
+
+\begin{longtable}{@{}p{0.25\textwidth}p{0.69\textwidth}@{}}
+\toprule
+语句或写法 & 在本文件中的作用\\
+\midrule
+\endfirsthead
+\toprule
+语句或写法 & 在本文件中的作用\\
+\midrule
+\endhead
+\texttt{theorem} & 声明一个需要证明的命题；冒号后是命题，\texttt{:= by} 后是证明。\\
+\texttt{by} & 开始使用证明策略的证明块。它后面的内容仍须形成 Lean 能检查的证明。\\
+\texttt{intro h} & 当目标是 $P\Rightarrow Q$ 时，把 $P$ 作为假设取名为 \texttt{h}，再证明 $Q$。证明否定时，也可以引入待反驳的假设。\\
+\texttt{constructor} & 为合取分别证明两个部分，或为等价分别证明两个方向。\\
+\texttt{rcases h with ...} & 拆开已有的合取、析取或存在性证明；析取通常产生不同的证明分支。\\
+\texttt{refine} & 给出证明的总体构造，把暂未完成的部分写成 \texttt{?\_}，由后续步骤填完。文件最终不保留未解决的目标。\\
+\texttt{exact h} & 使用与当前目标完全对应的已有证明 \texttt{h}，完成该目标。\\
+\texttt{apply h} & 使用某条定理，把当前目标转化成它要求的前提。\\
+\texttt{have h := ...} & 引入一条已经从现有条件证明出来的中间结论，供后续步骤使用。\\
+\texttt{linarith} & 处理等式和不等式之间的线性算术关系，例如由 $a\le b$ 与 $a+b+c=180$ 推导角度界。\\
+\texttt{norm\_num} & 核查确定的数值等式、不等式，并化简涉及这些数值的命题。\\
+\texttt{ring} & 证明环运算的代数恒等式，例如把给定三角形构造的三个角相加，核对结果为 $180$。\\
+\texttt{rfl} & 用定义展开后的相同表达式证明等式；例如按构造得到的最小角恰好等于参数 $m$。\\
+\texttt{.mp}、\texttt{.mpr} & 对一条 $P\Leftrightarrow Q$，\texttt{.mp} 使用 $P\Rightarrow Q$，\texttt{.mpr} 使用 $Q\Rightarrow P$。\\
+\texttt{.1}、\texttt{.2} & 对合取取第一、第二部分；对等价也可取正向、反向证明。\\
+\texttt{rw [h]} & 利用等式 \texttt{h} 改写目标或已有结论。\\
+\texttt{change} & 把当前目标换成按定义展开后相同的表达式，便于看清具体数值。\\
+\texttt{by\_contra h} & 反证法：假设目标的否定，并从中推出矛盾。\\
+\bottomrule
+\end{longtable}
+
+自动化策略在这里承担的是组织和生成证明的工作。具体角度范围为什么成立，仍然是本书前面已经展开的加法、不等式与逻辑推理。关于 \texttt{linarith} 及数学证明的入门说明，可参见 mathlib 社区教材 \emph{Mathematics in Lean} 的基础章节。\footnote{\url{https://leanprover-community.github.io/mathematics_in_lean/C02_Basics.html}}
+
+\section{关键证明一：最小角大于 45 度 保证锐角}
+
+源码中的证明是：
+\begin{Verbatim}[fontsize=\small,breaklines=true]
+theorem min_gt_45_acute (t : Triangle) : 45 < t.a → Acute t := by
+  intro ha
+  apply (acute_iff_max t).mpr
+  linarith [t.ab, t.angle_sum]
+\end{Verbatim}
+
+第一行的结论是一个蕴含。\texttt{intro ha} 把假设
+\[
+45<a
+\]
+记录为 \texttt{ha}，此后的目标是证明 \texttt{Acute t}。
+
+此前的定理 \texttt{acute\_iff\_max t} 已经证明
+\[
+\operatorname{Acute}(t)\Longleftrightarrow c<90.
+\]
+使用 \texttt{.mpr} 取出右向左的证明，即
+\[
+c<90\Longrightarrow\operatorname{Acute}(t).
+\]
+因此，\texttt{apply} 将当前任务变为证明 $c<90$。
+
+最后一句 \texttt{linarith [t.ab, t.angle\_sum]} 使用三条实质条件：
+\[
+45<a,\qquad a\le b,\qquad a+b+c=180.
+\]
+其数学内容可逐步写成
+\[
+b\ge a>45,\qquad a+b>90,
+\]
+从而
+\[
+c=180-(a+b)<180-90=90.
+\]
+于是最大角小于 $90^\circ$，三个角都小于 $90^\circ$。这个证明不需要另假设 $a\le60$，因为该界本来就由三角形的结构条件推出。
+
+\section{关键证明二：最小角恰为 45 度 的边界}
+
+对应代码是：
+\begin{Verbatim}[fontsize=\small,breaklines=true]
+theorem min_eq_45_acute_or_right (t : Triangle) :
+    t.a = 45 → Acute t ∨ Right t := by
+  intro ha
+  have hc : t.c ≤ 90 := by
+    linarith [t.ab, t.angle_sum]
+  rcases lt_or_eq_of_le hc with hlt | heq
+  · exact Or.inl ((acute_iff_max t).mpr hlt)
+  · exact Or.inr ((right_iff_max t).mpr heq)
+\end{Verbatim}
+
+引入假设 $a=45$ 后，由 $b\ge a=45$ 得到
+\[
+c=180-a-b\le180-45-45=90.
+\]
+这就是名为 \texttt{hc} 的中间结论。
+
+由 $c\le90$，只有两种情形：
+\[
+c<90\quad\hbox{或}\quad c=90.
+\]
+\texttt{lt\_or\_eq\_of\_le hc} 把这个不等式拆为严格小于或等于，\texttt{rcases} 对两种情形分别继续证明。
+
+第一分支得到 \texttt{hlt : t.c < 90}，由最大角判据推出锐角，再用 \texttt{Or.inl} 证明“锐角或直角”中的左项。第二分支得到 \texttt{heq : t.c = 90}，由直角判据推出直角，再用 \texttt{Or.inr} 证明右项。
+
+这段代码并没有在边界上强行选择一种类型。后续的 \texttt{two\_types\_at\_45} 给出两个见证，证明这两种情形都确实可以发生：
+\[
+(45,60,75),\qquad (45,45,90).
+\]
+
+\section{关键证明三：怎样证明一个反推是错的}
+
+考虑错误反推
+\[
+\text{锐角三角形}\Longrightarrow\text{最小角大于 }45^\circ.
+\]
+我们先构造 $(30,75,75)$，再证明它能推翻这个全称命题：
+
+\begin{Verbatim}[fontsize=\small,breaklines=true]
+def acute30 : Triangle where
+  a := 30
+  b := 75
+  c := 75
+  a_pos := by norm_num
+  ab := by norm_num
+  bc := by norm_num
+  angle_sum := by norm_num
+
+theorem not_every_acute_has_min_gt_45 :
+    ¬ (∀ t : Triangle, Acute t → 45 < t.a) := by
+  intro h
+  have hbad := h acute30 (by norm_num [Acute, acute30])
+  norm_num [acute30] at hbad
+\end{Verbatim}
+
+构造中的四项证明分别核对
+\[
+0<30,\qquad30\le75,\qquad75\le75,\qquad30+75+75=180.
+\]
+因此，\texttt{acute30} 确实属于前面定义的三角形类型。
+
+接下来，\texttt{intro h} 假设错误反推对所有三角形都成立。把这个全称假设用于 \texttt{acute30}，还需要提供它为锐角三角形的证明。括号中的 \texttt{norm\_num [Acute, acute30]} 展开定义并核对
+\[
+30<90,\qquad75<90,\qquad75<90.
+\]
+于是，错误的全称假设会给出
+\[
+45<30.
+\]
+代码把这个不可能成立的结论记为 \texttt{hbad}。最后的 \texttt{norm\_num} 核查该数值不等式不能成立，得到矛盾，从而完成原全称命题之否定的证明。
+
+这不是把错误命题放入文件后等待报错。文件中真正声明并成功证明的是一个正确命题：
+\[
+\neg\bigl(\forall t,\ \operatorname{Acute}(t)\Rightarrow a(t)>45\bigr).
+\]
+其余六个错误反推也按照这个原则处理。
+
+\section{关键证明四：“存在锐角”与“必定锐角”}
+
+\subsection{用构造证明存在范围的充分性}
+
+对于 $0<m\le60$，源码构造
+\[
+a=m,\qquad b=c=90-\frac m2.
+\]
+它需要分别核查以下事实：
+\[
+0<a,\qquad a\le b,\qquad b=c,\qquad a+b+c=180.
+\]
+其中 $a\le b$ 等价于
+\[
+m\le90-\frac m2
+\quad\Longleftrightarrow\quad
+\frac32m\le90
+\quad\Longleftrightarrow\quad
+m\le60.
+\]
+内角和的验证是
+\[
+m+\left(90-\frac m2\right)
+ +\left(90-\frac m2\right)=180.
+\]
+由 $m>0$，又有最大角
+\[
+c=90-\frac m2<90,
+\]
+所以这个构造确实是锐角三角形。
+
+\texttt{acute\_min\_exists\_iff} 的两个方向分别是：
+\begin{enumerate}
+\item 如果存在最小角为 $m$ 的锐角三角形，则对该见证使用基本范围 $0<a\le60$，再将 $a=m$ 代入，得到 $0<m\le60$。
+\item 如果 $0<m\le60$，则使用上述构造给出一个具体见证，证明“存在”。
+\end{enumerate}
+
+因此，存在性定理不仅证明一个必要范围，还证明范围内的每一个实数都能取得。直角与钝角的存在范围采用对应构造，分别得到 $(0,45]$ 与 $(0,45)$。
+
+\subsection{为什么实数构造出现 \texttt{noncomputable}}
+
+代码中的锐角构造写作：
+\begin{Verbatim}[fontsize=\small,breaklines=true]
+noncomputable def acuteWithMin
+    (m : ℝ) (hm0 : 0 < m) (hm60 : m ≤ 60) : Triangle where
+  a := m
+  b := 90 - m / 2
+  c := 90 - m / 2
+  a_pos := hm0
+  ab := by linarith
+  bc := le_rfl
+  angle_sum := by ring
+\end{Verbatim}
+
+在本次所用版本中，这个构造依赖一般实数的除法定义，而相应依赖不提供直接的可执行代码。\texttt{noncomputable} 告诉 Lean：保留数学定义及其证明，不要求为这个定义生成可直接运行的计算程序。
+
+它没有删去任何条件，也没有替代任何证明。代码中正性、排序与内角和的各项证明仍然完整存在；随后关于该构造为锐角三角形的定理，也仍然需要通过检查。这里的 \texttt{noncomputable} 不表示“未经证明”，也不表示“允许任意填写结论”。
+
+\subsection{保证性定理的两个方向}
+
+文件中最直接回答原问题的定理是：
+\begin{Verbatim}[fontsize=\small,breaklines=true]
+theorem guarantees_acute_iff
+    (m : ℝ) (hm0 : 0 < m) (_hm60 : m ≤ 60) :
+    (∀ t : Triangle, t.a = m → Acute t) ↔ 45 < m := by
+  constructor
+  · intro hAll
+    by_contra hNot
+    have hm45 : m ≤ 45 := le_of_not_gt hNot
+    have hAcute := hAll (rightWithMin m hm0 hm45) rfl
+    have hlt :=
+      (acute_iff_max (rightWithMin m hm0 hm45)).1 hAcute
+    change (90 : ℝ) < 90 at hlt
+    linarith
+  · intro hm45 t ha
+    apply min_gt_45_acute t
+    rw [ha]
+    exact hm45
+\end{Verbatim}
+
+正向假设：所有最小角为 $m$ 的三角形都锐角。反设 $m\le45$。由于 $m>0$，可以构造
+\[
+(m,90-m,90).
+\]
+当 $m\le45$ 时，$m\le90-m$；当 $m>0$ 时，$90-m<90$。三个角按大小排列，和为 $180$，而且最大角等于 $90$，所以这是最小角恰为 $m$ 的直角三角形。
+
+全称假设 \texttt{hAll} 又要求这个见证为锐角三角形，于是最大角必须严格小于 $90$。结合它的最大角按定义等于 $90$，得到
+\[
+90<90,
+\]
+产生矛盾。因此必须有 $m>45$。
+
+反向假设 $m>45$，任取最小角为 $m$ 的三角形 \texttt{t}。由 \texttt{ha : t.a = m} 改写，得到 $t.a>45$。应用已经证明的 \texttt{min\_gt\_45\_acute}，便得到 \texttt{Acute t}。由于 \texttt{t} 是任取的，这就证明了全称结论。
+
+参数名 \texttt{\_hm60} 前面的下划线表示这个参数不需要在证明步骤中直接使用。它仍然保留在定理的陈述中，用于明确本题讨论的可行角度域。这不是删去假设，也不是允许参数取任意无效值。
+
+\section{新增情形：任意一个内角的 Lean 建模}
+\label{sec:lean-any-angle}
+
+\subsection{为什么需要另一个谓词}
+
+本书原有结构把角按 $a\le b\le c$ 排列，因此 \texttt{t.a = x} 表示“最小角等于 $x$”。如果题目仅说“有一个角等于 $x$”，写成这个条件就额外加入了题目没有给出的大小限制。新增定义直接列出三个可能的位置：
+
+\begin{Verbatim}
+def HasAngle (t : Triangle) (x : ℝ) : Prop :=
+  t.a = x ∨ t.b = x ∨ t.c = x
+\end{Verbatim}
+
+这个定义对应上一章的 $H(t,x)$。例如，有序三元组 $(30,60,90)$ 满足 \texttt{HasAngle t 60}，因为中间的角等于 $60$；它不满足 \texttt{t.a = 60}。所有新定理均通过 \texttt{HasAngle} 表达“题目给出的角”，没有改变最小角与最大角的旧定义。
+
+含有 $90$ 度角与直角类型的定义完全相同，因而下面的证明只需展开定义：
+
+\begin{Verbatim}
+theorem hasAngle_ninety_iff_right (t : Triangle) :
+    HasAngle t 90 ↔ Right t := by
+  rfl
+\end{Verbatim}
+
+这里的 $90$ 是固定值。这条等价并不表示：对一个任意指定的 $x$，只要三角形为直角，$x$ 就必须是 $90$。直角三角形中的另外两个角仍然可以被题目指定。
+
+\subsection{构造出的三个角怎样进入有序模型}
+
+数学论证常把指定角写在第一项，例如
+\[
+\left(x,90-\frac x2,90-\frac x2\right).
+\]
+当 $x=80$ 时，得到 $(80,50,50)$，其中第一项并非最小。因此新增辅助构造 \texttt{ofAngles} 先接收任意次序的三个正数 $x,y,z$ 及它们的和为 $180$ 的证明，再按大小选择以下六种排列之一：
+\[
+(x,y,z),\ (x,z,y),\ (z,x,y),\ (y,x,z),\ (y,z,x),\ (z,y,x).
+\]
+每个分支都填写 \texttt{Triangle} 要求的正性、两个大小关系和内角和证明。例如，若 $x\le y\le z$，直接按 $(x,y,z)$ 存放；若 $x\le z<y$，则按 $(x,z,y)$ 存放。其他分支依照同样的大小判断分别填写，并由 Lean 检查。
+
+\path{ofAngles_hasAngles} 证明排序后仍包含原来的 $x,y,z$；\path{ofAngles_isAcute} 证明当三个原始数都小于 $90$ 时，排序后的三角形仍为锐角类型。这样，“调整存放顺序”也有对应的证明，后面的构造无需把 $x$ 偷换为最小角。
+
+代码中的 \texttt{split\_ifs} 把这些条件分支全部展开，\texttt{simp} 或 \texttt{simp\_all} 再化简相应字段与析取。这里的 \texttt{noncomputable} 与实数运算、实数比较有关，不表示可以省略正性或排序证明。
+
+三种锐角参数构造分别命名为 \path{acuteWithAngle}、\path{rightWithAngle}、\path{obtuseWithAcuteAngle}。当 $x=80$ 时，进入有序模型后的数值为：
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+类型 & 数学构造的列举次序 & 模型内从小到大的次序\\
+\midrule
+锐角 & $(80,50,50)$ & $(50,50,80)$\\
+直角 & $(80,10,90)$ & $(10,80,90)$\\
+钝角 & $(80,5,95)$ & $(5,80,95)$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+每种构造均有两条配套定理：一条验证仍含指定角，一条验证三角形类型。指定角本身为钝角时，使用 \path{obtuseWithObtuseAngle}；这覆盖了 $90<x<180$ 的另外一个存在区间。
+
+\subsection{三个存在命题怎样合在一起}
+
+三个存在范围分别由 \path{acute_angle_exists_iff}、\path{right_angle_exists_iff}、\path{obtuse_angle_exists_iff} 证明。它们的右侧依次为
+\[
+0<x<90,\qquad 0<x\le90,\qquad
+(0<x<90)\lor(90<x<180).
+\]
+特别地，钝角类型的存在范围包含锐角区间。它表示“存在一个钝角三角形，其中有一个角等于 $x$”，并未要求这个 $x$ 就是钝角。
+
+在 $0<x<90$ 下，把这三条存在性结论合在一起，得到源码中的完整证明：
+
+\par\noindent\begin{minipage}{\linewidth}
+\begin{Verbatim}[fontsize=\small]
+theorem all_three_types_possible_for_angle (x : ℝ)
+    (hx0 : 0 < x) (hx90 : x < 90) :
+    (∃ t : Triangle, Acute t ∧ HasAngle t x) ∧
+    (∃ t : Triangle, Right t ∧ HasAngle t x) ∧
+    (∃ t : Triangle, Obtuse t ∧ HasAngle t x) := by
+  exact ⟨(acute_angle_exists_iff x).mpr ⟨hx0, hx90⟩,
+    (right_angle_exists_iff x).mpr ⟨hx0, le_of_lt hx90⟩,
+    (obtuse_angle_exists_iff x).mpr (Or.inl ⟨hx0, hx90⟩)⟩
+\end{Verbatim}
+\end{minipage}\par
+
+结论中有三个独立的存在量词，每个量词各自寻找一个三角形。证明的三个分量分别调用三个充要条件的反向，填写相应的范围证明。中间一项用 \texttt{le\_of\_lt hx90}，因为直角类型的存在范围允许等号，而现有假设给出了更强的严格小于。
+
+这条定理中的 $x$ 为实数，证明覆盖每个 $0<x<90$。附带的 \path{three_types_at_60_angle} 另行核验 $(60,60,60)$、$(30,60,90)$、$(20,60,100)$ 三个具体见证，便于对照课堂例题；通用结论并不依赖对有限个角度抽样。
+
+\subsection{怎样证明没有角度能单独保证锐角}
+
+\path{no_angle_guarantees_acute} 的结论是否定一个全称命题。下面收入其完整证明：
+
+\par\noindent\begin{minipage}{\linewidth}
+\begin{Verbatim}[fontsize=\small]
+theorem no_angle_guarantees_acute (x : ℝ)
+    (hx0 : 0 < x) (hx180 : x < 180) :
+    ¬ (∀ t : Triangle, HasAngle t x → Acute t) := by
+  intro h
+  by_cases hx90 : x < 90
+  · let t := rightWithAngle x hx0 hx90
+    have hR : Right t := rightWithAngle_isRight x hx0 hx90
+    have hA : Acute t := h t (rightWithAngle_hasAngle x hx0 hx90)
+    have hc : t.c = 90 := (right_iff_max t).mp hR
+    linarith [hA.2.2]
+  · obtain ⟨t, ht⟩ := (angle_exists_iff x).mpr ⟨hx0, hx180⟩
+    have hlt := acute_hasAngle_lt_ninety t x (h t ht) ht
+    exact hx90 hlt
+\end{Verbatim}
+\end{minipage}\par
+
+\texttt{intro h} 假设：每个含有 $x$ 角的三角形都是锐角三角形。随后按 $x<90$ 是否成立分成两支。
+
+若 $x<90$，构造 \texttt{rightWithAngle x hx0 hx90}。它含有 $x$ 角，所以假设 \texttt{h} 判定它为锐角；但它的最大角等于 $90$。锐角定义要求最大角严格小于 $90$，两者矛盾。
+
+若 $x<90$ 不成立，先用 \path{angle_exists_iff} 和 $0<x<180$ 找到一个确实含有 $x$ 角的三角形。假设 \texttt{h} 又判定它为锐角，而 \path{acute_hasAngle_lt_ninety} 随即推出 $x<90$，与当前分支的否定条件矛盾。这一分支同时覆盖 $x=90$ 与 $x>90$。
+
+可行范围保证第二支取得实际见证，而不是对空集合讨论保证性质。两个正向保证的精确条件分别写成
+\[
+\bigl[\forall t,\ H(t,x)\Rightarrow R(t)\bigr]
+\Longleftrightarrow x=90,
+\]
+\[
+\bigl[\forall t,\ H(t,x)\Rightarrow O(t)\bigr]
+\Longleftrightarrow x>90,
+\]
+对应 \path{angle_guarantees_right_iff} 和 \path{angle_guarantees_obtuse_iff}。它们同样在 $0<x<180$ 的题意范围内陈述。完整代码和每一步证明均收录在附录中。
+
+
+\section{全部 57 个定理的对应索引}
+
+下面的编号用于查找源码，不是 Lean 自动分配的定理编号。源码中名字前的统一命名空间为 \texttt{TriangleAngleLogic}。
+
+{\small
+\begin{longtable}{@{}p{0.04\textwidth}p{0.45\textwidth}p{0.43\textwidth}@{}}
+\toprule
+序 & 源码定理名 & 数学内容\\
+\midrule
+\endfirsthead
+\toprule
+序 & 源码定理名 & 数学内容\\
+\midrule
+\endhead
+1 & \path{min_range} & 任意三角形均有 $0<a\le60$。\\
+2 & \path{max_range} & 任意三角形均有 $60\le c<180$。\\
+3 & \path{acute_iff_max} & 锐角当且仅当 $c<90$。\\
+4 & \path{right_iff_max} & 直角当且仅当 $c=90$。\\
+5 & \path{obtuse_iff_max} & 钝角当且仅当 $c>90$。\\
+6 & \path{acute_iff_max_range} & 锐角当且仅当 $60\le c<90$。\\
+7 & \path{obtuse_iff_max_range} & 钝角当且仅当 $90<c<180$。\\
+8 & \path{acute_min_range} & 锐角推出 $0<a\le60$。\\
+9 & \path{right_min_range} & 直角推出 $0<a\le45$。\\
+10 & \path{obtuse_min_range} & 钝角推出 $0<a<45$。\\
+11 & \path{min_gt_45_acute} & $a>45$ 保证锐角。\\
+12 & \path{min_eq_45_acute_or_right} & $a=45$ 保证锐角或直角。\\
+13 & \path{min_ge_45_not_obtuse} & $a\ge45$ 排除钝角。\\
+14 & \path{three_types_at_30} & 验证三个最小角为 $30$ 的不同类型见证。\\
+15 & \path{two_types_at_45} & 验证最小角为 $45$ 的锐角、直角见证。\\
+16 & \path{not_every_acute_has_min_gt_45} & 否定“锐角都满足 $a>45$”。\\
+17 & \path{min_le_60_does_not_force_acute} & 否定“$0<a\le60$ 保证锐角”。\\
+18 & \path{min_le_45_does_not_force_right} & 否定“$0<a\le45$ 保证直角”。\\
+19 & \path{min_lt_45_does_not_force_obtuse} & 否定“$0<a<45$ 保证钝角”。\\
+20 & \path{min_lt_45_does_not_force_acute} & 否定“$0<a<45$ 保证锐角”。\\
+21 & \path{min_eq_45_does_not_force_acute} & 否定“$a=45$ 保证锐角”。\\
+22 & \path{min_eq_45_does_not_force_right} & 否定“$a=45$ 保证直角”。\\
+23 & \path{acuteWithMin_isAcute} & 验证锐角通用构造的类型。\\
+24 & \path{rightWithMin_isRight} & 验证直角通用构造的类型。\\
+25 & \path{obtuseWithMin_isObtuse} & 验证钝角通用构造的类型。\\
+26 & \path{acute_min_exists_iff} & 存在最小角为 $m$ 的锐角三角形，当且仅当 $0<m\le60$。\\
+27 & \path{right_min_exists_iff} & 存在最小角为 $m$ 的直角三角形，当且仅当 $0<m\le45$。\\
+28 & \path{obtuse_min_exists_iff} & 存在最小角为 $m$ 的钝角三角形，当且仅当 $0<m<45$。\\
+29 & \path{all_three_types_possible} & 对每个 $0<m<45$，三类分别都有见证。\\
+30 & \path{guarantees_acute_iff} & 在可行范围内，仅知 $m$ 能保证锐角，当且仅当 $m>45$。\\
+31 & \path{no_min_guarantees_right} & 任意可行最小角都不能保证直角。\\
+32 & \path{no_min_guarantees_obtuse} & 任意可行最小角都不能保证钝角。\\
+33 & \path{hasAngle_bounds} & 任意一个内角均严格介于0与180度之间。\\
+34 & \path{hasAngle_ninety_iff_right} & 含90度角当且仅当为直角三角形。\\
+35 & \path{hasAngle_gt_ninety_obtuse} & 含一个大于90度的内角必为钝角三角形。\\
+36 & \path{acute_hasAngle_lt_ninety} & 锐角三角形中任意一个内角均小于90度。\\
+37 & \path{right_excludes_obtuse} & 直角三角形不可能同时为钝角三角形。\\
+38 & \path{ofAngles_hasAngles} & 任意三个正角经排序后，仍分别属于构造出的三角形。\\
+39 & \path{ofAngles_isAcute} & 排序保持三个角都小于90度的锐角性质。\\
+40 & \path{acuteWithAngle_hasAngle} & 锐角通用构造包含指定角x。\\
+41 & \path{acuteWithAngle_isAcute} & 验证含指定锐角的锐角通用构造。\\
+42 & \path{rightWithAngle_hasAngle} & 直角通用构造包含指定锐角x。\\
+43 & \path{rightWithAngle_isRight} & 验证含指定锐角的直角通用构造。\\
+44 & \path{obtuseWithAcuteAngle_hasAngle} & 钝角通用构造包含指定锐角x。\\
+45 & \path{obtuseWithAcuteAngle_isObtuse} & 验证含指定锐角的钝角通用构造。\\
+46 & \path{obtuseWithObtuseAngle_hasAngle} & 钝角通用构造包含指定钝角x。\\
+47 & \path{obtuseWithObtuseAngle_isObtuse} & 验证含指定钝角的钝角通用构造。\\
+48 & \path{acute_angle_exists_iff} & 存在含角x的锐角三角形，当且仅当$0<x<90$。\\
+49 & \path{right_angle_exists_iff} & 存在含角x的直角三角形，当且仅当$0<x\le 90$。\\
+50 & \path{obtuse_angle_exists_iff} & 存在含角x的钝角三角形，当且仅当$0<x<90$或$90<x<180$。\\
+51 & \path{angle_exists_iff} & 存在含角x的三角形，当且仅当$0<x<180$。\\
+52 & \path{all_three_types_possible_for_angle} & 每个$0<x<90$分别具有锐角、直角、钝角三种见证。\\
+53 & \path{no_angle_guarantees_acute} & 任意可行角x，均不能仅凭含该角保证锐角类型。\\
+54 & \path{angle_guarantees_right_iff} & 在可行范围内，仅凭含角x保证直角，当且仅当$x=90$。\\
+55 & \path{angle_guarantees_obtuse_iff} & 在可行范围内，仅凭含角x保证钝角，当且仅当$90<x$。\\
+56 & \path{three_types_at_60_angle} & 核验同含60度角的三种明确见证。\\
+57 & \path{one_acute_angle_does_not_force_acute} & 以含60度角的直角三角形否定“含锐角必为锐角三角形”。\\
+\bottomrule
+\end{longtable}
+}
+
+其中第 29 项是三个存在命题的合取：
+\[
+\begin{aligned}
+&(\exists t_1,\ \operatorname{Acute}(t_1)\land a(t_1)=m)\\
+{}\land{}&
+(\exists t_2,\ \operatorname{Right}(t_2)\land a(t_2)=m)\\
+{}\land{}&
+(\exists t_3,\ \operatorname{Obtuse}(t_3)\land a(t_3)=m).
+\end{aligned}
+\]
+这里的 $t_1,t_2,t_3$ 可以而且应当是不同三角形。它没有要求一个三角形同时具有三种互斥的类型。
+
+\section{编译结果、可信范围与复现方法}
+
+\subsection{实际检查结果}
+
+本书使用的原始 Lean 文件已经在以下环境检查：
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+项目 & 记录\\
+\midrule
+Lean 版本 & 4.19.0。\\
+mathlib 版本 & v4.19.0。\\
+mathlib 提交 & \path{c44e0c8ee63ca166450922a373c7409c5d26b00b}。\\
+定理数量 & 57。\\
+编译退出码 & 0。\\
+错误、警告 & 0 个错误，0 个警告。\\
+证明占位 & 源码没有使用 \texttt{sorry} 或 \texttt{admit}。\\
+公理审查 & 57 项依赖检查均未出现 \texttt{sorryAx}。\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+这些结果是对本书随附文件及上述版本的检查记录。若改动定义、命题、证明或依赖版本，应重新检查，不能把当前记录直接视为修改后文件的验证结果。
+
+\subsection{不能把“无占位证明”说成“没有公理”}
+
+检查输出中出现的标准公理名称包括以下三项；各定理的实际依赖集合可以不同：
+\begin{Verbatim}[fontsize=\small,breaklines=true]
+[propext, Classical.choice, Quot.sound]
+\end{Verbatim}
+
+它们分别涉及命题外延性、经典选择和商类型的相容性规则。更具体地说，命题外延性允许由两个命题互相推出建立相应命题的相等；经典选择允许从“存在对象”的证明选择对象；商类型规则保证等价的代表元对应相同的商对象。这里使用的是 Lean/mathlib 通常采用的基础，并没有额外添加“本题结论成立”一类自设公理。
+
+\texttt{sorryAx} 则与未完成证明的占位有关。它没有出现在本文件任何定理的公理依赖中，说明这些定理没有通过该占位跳过证明。因此，准确表述是“全部证明完成，未使用未完成证明占位或自设公理”，而不是“所有结果不依赖任何公理”。Lean 官方教材关于公理、计算及检查依赖的讨论可进一步参见“Axioms and Computation”一章。\footnote{\url{https://lean-lang.org/theorem_proving_in_lean4/Axioms-and-Computation/}}
+
+\subsection{运行与检查}
+
+把附录中的完整源码保存为 \texttt{三角形角度逻辑.lean}，放入已经配置上述 mathlib 版本的项目目录后，运行：
+\begin{Verbatim}[fontsize=\small,breaklines=true]
+lake env lean 三角形角度逻辑.lean
+\end{Verbatim}
+
+文件中对全部 57 个定理逐一执行 \texttt{\#print axioms}。例如：
+\begin{Verbatim}[fontsize=\small,breaklines=true]
+#print axioms TriangleAngleLogic.min_gt_45_acute
+#print axioms TriangleAngleLogic.guarantees_acute_iff
+\end{Verbatim}
+
+运行时应检查命令的退出码与错误信息，并查看公理依赖。正常的公理依赖输出本身不是报错。\texttt{\#check} 可以查看一个声明的类型，但仅列出名字或显示类型，不能替代对源码中完整证明的编译检查。
+
+本书正文中的短代码块用于解释局部步骤，有些会引用前面已证明的辅助定理；复现时应运行随附的完整文件。后续附录给出完整源码，保留全部定义、定理、反例与依赖检查命令。
+
+
+
+\appendix
+\chapter{完整 Lean 源码}
+\label{app:complete-code}
+
+本附录完整收入已通过检查的 \texttt{三角形角度逻辑.lean}，不省略任何定义、定理、反例或公理审查命令。左侧行号为排版辅助，不属于 Lean 语句；代码中的所有注释、符号与证明内容均保留。复现时使用随附的原始 \texttt{.lean} 文件，可保留原始缩进。
+
+随附 Lean 文件的 SHA-256 校验值为：
+\begin{quote}\small\path{f492b2d41016028278ffc772259c39a629d3c7f3079ad0aebbd428a5e1da4b42}\end{quote}
+
+% BEGIN_FULL_LEAN_SOURCE
+\begin{Verbatim}[numbers=left,numbersep=5pt,xleftmargin=6mm,fontsize=\fontsize{9}{11.5}\selectfont]
+import Mathlib.Data.Real.Basic
+import Mathlib.Tactic.Linarith
+import Mathlib.Tactic.NormNum
+import Mathlib.Tactic.Ring
+import Mathlib.Tactic.SplitIfs
+
+/-!
+# 三角形最小角、最大角、任意一个角与类型：Lean 4 形式化
+
+实测版本：Lean 4.19.0；mathlib v4.19.0。
+mathlib 提交：c44e0c8ee63ca166450922a373c7409c5d26b00b。
+检查结果：57 个定理，编译退出码 0，0 错误、0 警告。
+公理依赖审查未发现 sorryAx；使用 Lean/mathlib 标准基础公理，不引入自设公理。
+在对应的 mathlib 项目目录运行：lake env lean 三角形角度逻辑.lean
+
+所有角度均以“度”为单位，类型为实数 ℝ，不限制为整数。
+用 0 < a ≤ b ≤ c、a+b+c=180 表示按大小排列的非退化三角形内角。
+因此 a 是最小角，c 是最大角；这里形式化的是角度模型，不涉及坐标作图。
+
+逻辑对应：P → Q 为推出；P ↔ Q 为等价；P ∧ Q 为且；P ∨ Q 为或。
+“P 不能保证 Q”用 ¬ (∀ t, P t → Q t) 表达，由具体反例证明。
+它不同于 ∀ t, P t → ¬ Q t，后者要求每个满足 P 的对象都不满足 Q。
+
+Lean 检查给定证明是否成立；证明策略失败本身不表示命题为假。
+下文将真命题写成定理，将错误的全称反推写成其否定的定理。
+-/
+
+namespace TriangleAngleLogic
+
+-- 三个角按从小到大的顺序排列。
+structure Triangle where
+  a : ℝ
+  b : ℝ
+  c : ℝ
+  a_pos : 0 < a
+  ab : a ≤ b
+  bc : b ≤ c
+  angle_sum : a + b + c = 180
+
+-- 使用原始定义，随后证明它们与最大角条件等价。
+def Acute (t : Triangle) : Prop :=
+  t.a < 90 ∧ t.b < 90 ∧ t.c < 90
+
+def Right (t : Triangle) : Prop :=
+  t.a = 90 ∨ t.b = 90 ∨ t.c = 90
+
+def Obtuse (t : Triangle) : Prop :=
+  90 < t.a ∨ 90 < t.b ∨ 90 < t.c
+
+/-! ## 1. 所有三角形的基本范围 -/
+
+-- 最小角总在 (0,60] 中。
+theorem min_range (t : Triangle) : 0 < t.a ∧ t.a ≤ 60 := by
+  constructor
+  · exact t.a_pos
+  · linarith [t.ab, t.bc, t.angle_sum]
+
+-- 最大角总在 [60,180) 中。
+theorem max_range (t : Triangle) : 60 ≤ t.c ∧ t.c < 180 := by
+  constructor
+  · linarith [t.ab, t.bc, t.angle_sum]
+  · linarith [t.a_pos, t.ab, t.angle_sum]
+
+/-! ## 2. 最大角能完全确定类型 -/
+
+-- 三个角都小于 90，当且仅当最大角小于 90。
+theorem acute_iff_max (t : Triangle) : Acute t ↔ t.c < 90 := by
+  constructor
+  · intro h
+    exact h.2.2
+  · intro hc
+    refine ⟨?_, ?_, hc⟩
+    · linarith [t.ab, t.bc]
+    · linarith [t.bc]
+
+-- 如存在直角，它只能是最大角。
+theorem right_iff_max (t : Triangle) : Right t ↔ t.c = 90 := by
+  constructor
+  · intro h
+    rcases h with ha | hb | hc
+    · linarith [(min_range t).2]
+    · linarith [t.a_pos, t.bc, t.angle_sum]
+    · exact hc
+  · intro hc
+    exact Or.inr (Or.inr hc)
+
+-- 如存在钝角，最大角必为钝角。
+theorem obtuse_iff_max (t : Triangle) : Obtuse t ↔ 90 < t.c := by
+  constructor
+  · intro h
+    rcases h with ha | hb | hc
+    · linarith [t.ab, t.bc]
+    · linarith [t.bc]
+    · exact hc
+  · intro hc
+    exact Or.inr (Or.inr hc)
+
+-- 锐角三角形 ↔ 60 ≤ 最大角 < 90。
+theorem acute_iff_max_range (t : Triangle) :
+    Acute t ↔ 60 ≤ t.c ∧ t.c < 90 := by
+  constructor
+  · intro h
+    exact ⟨(max_range t).1, (acute_iff_max t).mp h⟩
+  · intro h
+    exact (acute_iff_max t).mpr h.2
+
+-- 钝角三角形 ↔ 90 < 最大角 < 180。
+theorem obtuse_iff_max_range (t : Triangle) :
+    Obtuse t ↔ 90 < t.c ∧ t.c < 180 := by
+  constructor
+  · intro h
+    exact ⟨(obtuse_iff_max t).mp h, (max_range t).2⟩
+  · intro h
+    exact (obtuse_iff_max t).mpr h.1
+
+/-! ## 3. 已知类型，推出最小角的必要范围 -/
+
+-- 锐角三角形 → 0 < 最小角 ≤ 60；该范围事实上对所有三角形成立。
+theorem acute_min_range (t : Triangle) :
+    Acute t → 0 < t.a ∧ t.a ≤ 60 := by
+  intro _
+  exact min_range t
+
+-- 直角三角形 → 0 < 最小角 ≤ 45。
+theorem right_min_range (t : Triangle) :
+    Right t → 0 < t.a ∧ t.a ≤ 45 := by
+  intro h
+  have hc := (right_iff_max t).mp h
+  refine ⟨t.a_pos, ?_⟩
+  linarith [t.ab, t.angle_sum]
+
+-- 钝角三角形 → 0 < 最小角 < 45。
+theorem obtuse_min_range (t : Triangle) :
+    Obtuse t → 0 < t.a ∧ t.a < 45 := by
+  intro h
+  have hc := (obtuse_iff_max t).mp h
+  refine ⟨t.a_pos, ?_⟩
+  linarith [t.ab, t.angle_sum]
+
+/-! ## 4. 已知最小角，能保证什么 -/
+
+-- 最小角 > 45 → 锐角三角形。
+-- 最小角 ≤ 60 已由结构条件和 min_range 自动保证。
+theorem min_gt_45_acute (t : Triangle) : 45 < t.a → Acute t := by
+  intro ha
+  apply (acute_iff_max t).mpr
+  linarith [t.ab, t.angle_sum]
+
+-- 最小角 = 45 → 锐角三角形或直角三角形。
+theorem min_eq_45_acute_or_right (t : Triangle) :
+    t.a = 45 → Acute t ∨ Right t := by
+  intro ha
+  have hc : t.c ≤ 90 := by
+    linarith [t.ab, t.angle_sum]
+  rcases lt_or_eq_of_le hc with hlt | heq
+  · exact Or.inl ((acute_iff_max t).mpr hlt)
+  · exact Or.inr ((right_iff_max t).mpr heq)
+
+-- 最小角 ≥ 45 → 不可能是钝角三角形。
+theorem min_ge_45_not_obtuse (t : Triangle) :
+    45 ≤ t.a → ¬ Obtuse t := by
+  intro ha ho
+  have hsmall := (obtuse_min_range t ho).2
+  linarith
+
+/-! ## 5. 具体见证：相同最小角可以对应不同类型 -/
+
+def acute30 : Triangle where
+  a := 30
+  b := 75
+  c := 75
+  a_pos := by norm_num
+  ab := by norm_num
+  bc := by norm_num
+  angle_sum := by norm_num
+
+def right30 : Triangle where
+  a := 30
+  b := 60
+  c := 90
+  a_pos := by norm_num
+  ab := by norm_num
+  bc := by norm_num
+  angle_sum := by norm_num
+
+def obtuse30 : Triangle where
+  a := 30
+  b := 40
+  c := 110
+  a_pos := by norm_num
+  ab := by norm_num
+  bc := by norm_num
+  angle_sum := by norm_num
+
+def acute45 : Triangle where
+  a := 45
+  b := 60
+  c := 75
+  a_pos := by norm_num
+  ab := by norm_num
+  bc := by norm_num
+  angle_sum := by norm_num
+
+def right45 : Triangle where
+  a := 45
+  b := 45
+  c := 90
+  a_pos := by norm_num
+  ab := by norm_num
+  bc := by norm_num
+  angle_sum := by norm_num
+
+-- Lean 同时检查三个 30 度见证的类型和最小角。
+theorem three_types_at_30 :
+    (Acute acute30 ∧ acute30.a = 30) ∧
+    (Right right30 ∧ right30.a = 30) ∧
+    (Obtuse obtuse30 ∧ obtuse30.a = 30) := by
+  norm_num [Acute, Right, Obtuse, acute30, right30, obtuse30]
+
+-- 最小角恰好 45 度时，两种类型确实都存在。
+theorem two_types_at_45 :
+    (Acute acute45 ∧ acute45.a = 45) ∧
+    (Right right45 ∧ right45.a = 45) := by
+  norm_num [Acute, Right, acute45, right45]
+
+/-! ## 6. 错误反推：证明“该全称命题不成立” -/
+
+-- 错：锐角三角形 → 最小角 > 45。
+-- 反例：(30,75,75)。
+theorem not_every_acute_has_min_gt_45 :
+    ¬ (∀ t : Triangle, Acute t → 45 < t.a) := by
+  intro h
+  have hbad := h acute30 (by norm_num [Acute, acute30])
+  norm_num [acute30] at hbad
+
+-- 错：0 < 最小角 ≤ 60 → 锐角三角形。
+-- 反例：(30,60,90)。
+theorem min_le_60_does_not_force_acute :
+    ¬ (∀ t : Triangle, 0 < t.a ∧ t.a ≤ 60 → Acute t) := by
+  intro h
+  have hbad := h right30 (by norm_num [right30])
+  norm_num [Acute, right30] at hbad
+
+-- 错：0 < 最小角 ≤ 45 → 直角三角形。
+-- 反例：(30,75,75)。
+theorem min_le_45_does_not_force_right :
+    ¬ (∀ t : Triangle, 0 < t.a ∧ t.a ≤ 45 → Right t) := by
+  intro h
+  have hbad := h acute30 (by norm_num [acute30])
+  norm_num [Right, acute30] at hbad
+
+-- 错：0 < 最小角 < 45 → 钝角三角形。
+-- 反例：(30,75,75)。
+theorem min_lt_45_does_not_force_obtuse :
+    ¬ (∀ t : Triangle, 0 < t.a ∧ t.a < 45 → Obtuse t) := by
+  intro h
+  have hbad := h acute30 (by norm_num [acute30])
+  norm_num [Obtuse, acute30] at hbad
+
+-- 错：0 < 最小角 < 45 → 锐角三角形。
+-- 反例：(30,40,110)。
+theorem min_lt_45_does_not_force_acute :
+    ¬ (∀ t : Triangle, 0 < t.a ∧ t.a < 45 → Acute t) := by
+  intro h
+  have hbad := h obtuse30 (by norm_num [obtuse30])
+  norm_num [Acute, obtuse30] at hbad
+
+-- 错：最小角 = 45 → 锐角三角形。
+-- 反例：(45,45,90)。
+theorem min_eq_45_does_not_force_acute :
+    ¬ (∀ t : Triangle, t.a = 45 → Acute t) := by
+  intro h
+  have hbad := h right45 (by norm_num [right45])
+  norm_num [Acute, right45] at hbad
+
+-- 错：最小角 = 45 → 直角三角形。
+-- 反例：(45,60,75)。
+theorem min_eq_45_does_not_force_right :
+    ¬ (∀ t : Triangle, t.a = 45 → Right t) := by
+  intro h
+  have hbad := h acute45 (by norm_num [acute45])
+  norm_num [Right, acute45] at hbad
+
+end TriangleAngleLogic
+
+/-! ## 7. 精确区分“存在某类三角形”与“所有对应三角形都属于该类” -/
+
+namespace TriangleAngleLogic
+
+-- 对任意 0 < m ≤ 60，构造最小角为 m 的锐角三角形。
+-- noncomputable 用于实数除法的非可执行定义，不省略任何证明。
+noncomputable def acuteWithMin (m : ℝ) (hm0 : 0 < m) (hm60 : m ≤ 60) : Triangle where
+  a := m
+  b := 90 - m / 2
+  c := 90 - m / 2
+  a_pos := hm0
+  ab := by linarith
+  bc := le_rfl
+  angle_sum := by ring
+
+-- 最大角为 90 - m/2，由 m > 0 得到它严格小于 90。
+theorem acuteWithMin_isAcute (m : ℝ) (hm0 : 0 < m) (hm60 : m ≤ 60) :
+    Acute (acuteWithMin m hm0 hm60) := by
+  apply (acute_iff_max (acuteWithMin m hm0 hm60)).2
+  change 90 - m / 2 < 90
+  linarith
+
+-- 对任意 0 < m ≤ 45，构造最小角为 m 的直角三角形。
+def rightWithMin (m : ℝ) (hm0 : 0 < m) (hm45 : m ≤ 45) : Triangle where
+  a := m
+  b := 90 - m
+  c := 90
+  a_pos := hm0
+  ab := by linarith
+  bc := by linarith
+  angle_sum := by ring
+
+-- 最大角按构造等于 90。
+theorem rightWithMin_isRight (m : ℝ) (hm0 : 0 < m) (hm45 : m ≤ 45) :
+    Right (rightWithMin m hm0 hm45) := by
+  apply (right_iff_max (rightWithMin m hm0 hm45)).2
+  rfl
+
+-- 对任意 0 < m < 45，构造最小角为 m 的钝角三角形。
+def obtuseWithMin (m : ℝ) (hm0 : 0 < m) (hm45 : m < 45) : Triangle where
+  a := m
+  b := m
+  c := 180 - 2 * m
+  a_pos := hm0
+  ab := le_rfl
+  bc := by linarith
+  angle_sum := by ring
+
+-- 最大角为 180 - 2m，由 m < 45 得到它严格大于 90。
+theorem obtuseWithMin_isObtuse (m : ℝ) (hm0 : 0 < m) (hm45 : m < 45) :
+    Obtuse (obtuseWithMin m hm0 hm45) := by
+  apply (obtuse_iff_max (obtuseWithMin m hm0 hm45)).2
+  change 90 < 180 - 2 * m
+  linarith
+
+-- “存在一个最小角为 m 的锐角三角形”的准确充要条件。
+theorem acute_min_exists_iff (m : ℝ) :
+    (∃ t : Triangle, Acute t ∧ t.a = m) ↔ 0 < m ∧ m ≤ 60 := by
+  constructor
+  · rintro ⟨t, _hAcute, ha⟩
+    -- 任意三角形的最小角均属于 (0, 60]。
+    have hr := min_range t
+    simpa only [ha] using hr
+  · rintro ⟨hm0, hm60⟩
+    -- 显式给出三角形，并验证锐角性质与最小角数值。
+    exact ⟨acuteWithMin m hm0 hm60, acuteWithMin_isAcute m hm0 hm60, rfl⟩
+
+-- “存在一个最小角为 m 的直角三角形”的准确充要条件。
+theorem right_min_exists_iff (m : ℝ) :
+    (∃ t : Triangle, Right t ∧ t.a = m) ↔ 0 < m ∧ m ≤ 45 := by
+  constructor
+  · rintro ⟨t, hRight, ha⟩
+    have hr := right_min_range t hRight
+    simpa only [ha] using hr
+  · rintro ⟨hm0, hm45⟩
+    exact ⟨rightWithMin m hm0 hm45, rightWithMin_isRight m hm0 hm45, rfl⟩
+
+-- “存在一个最小角为 m 的钝角三角形”的准确充要条件。
+theorem obtuse_min_exists_iff (m : ℝ) :
+    (∃ t : Triangle, Obtuse t ∧ t.a = m) ↔ 0 < m ∧ m < 45 := by
+  constructor
+  · rintro ⟨t, hObtuse, ha⟩
+    have hr := obtuse_min_range t hObtuse
+    simpa only [ha] using hr
+  · rintro ⟨hm0, hm45⟩
+    exact ⟨obtuseWithMin m hm0 hm45, obtuseWithMin_isObtuse m hm0 hm45, rfl⟩
+
+-- 对每一个实数 m ∈ (0, 45)，确实分别存在三种类型的三角形。
+-- 这证明整个区间的结论，而不是只验证 m = 30 的一个样本。
+theorem all_three_types_possible (m : ℝ) (hm0 : 0 < m) (hm45 : m < 45) :
+    (∃ t : Triangle, Acute t ∧ t.a = m) ∧
+    (∃ t : Triangle, Right t ∧ t.a = m) ∧
+    (∃ t : Triangle, Obtuse t ∧ t.a = m) := by
+  refine ⟨?_, ?_, ?_⟩
+  · apply (acute_min_exists_iff m).2
+    exact ⟨hm0, by linarith⟩
+  · apply (right_min_exists_iff m).2
+    exact ⟨hm0, le_of_lt hm45⟩
+  · exact (obtuse_min_exists_iff m).2 ⟨hm0, hm45⟩
+
+-- 先限制 m 为实际可取的最小角，避免“没有三角形”导致全称命题空真。
+-- 该定理准确表达：只知道最小角 m，能够保证锐角，当且仅当 m > 45。
+theorem guarantees_acute_iff (m : ℝ) (hm0 : 0 < m) (_hm60 : m ≤ 60) :
+    (∀ t : Triangle, t.a = m → Acute t) ↔ 45 < m := by
+  constructor
+  · intro hAll
+    by_contra hNot
+    have hm45 : m ≤ 45 := le_of_not_gt hNot
+    -- 若 m ≤ 45，构造最小角为 m 的直角三角形，与“全部锐角”矛盾。
+    have hAcute := hAll (rightWithMin m hm0 hm45) rfl
+    have hlt := (acute_iff_max (rightWithMin m hm0 hm45)).1 hAcute
+    change (90 : ℝ) < 90 at hlt
+    linarith
+  · intro hm45 t ha
+    -- 若 m > 45，任何最小角为 m 的三角形都满足此前的充分条件。
+    apply min_gt_45_acute t
+    rw [ha]
+    exact hm45
+
+-- 对每一个可行的最小角 m，均不能保证所有对应三角形都是直角三角形。
+theorem no_min_guarantees_right (m : ℝ) (hm0 : 0 < m) (hm60 : m ≤ 60) :
+    ¬ (∀ t : Triangle, t.a = m → Right t) := by
+  intro hAll
+  -- 取同样具有最小角 m 的锐角三角形作为反例。
+  have hRight := hAll (acuteWithMin m hm0 hm60) rfl
+  have hAcute := acuteWithMin_isAcute m hm0 hm60
+  have hlt := (acute_iff_max (acuteWithMin m hm0 hm60)).1 hAcute
+  have heq := (right_iff_max (acuteWithMin m hm0 hm60)).1 hRight
+  linarith
+
+-- 对每一个可行的最小角 m，均不能保证所有对应三角形都是钝角三角形。
+theorem no_min_guarantees_obtuse (m : ℝ) (hm0 : 0 < m) (hm60 : m ≤ 60) :
+    ¬ (∀ t : Triangle, t.a = m → Obtuse t) := by
+  intro hAll
+  have hObtuse := hAll (acuteWithMin m hm0 hm60) rfl
+  have hAcute := acuteWithMin_isAcute m hm0 hm60
+  have hlt := (acute_iff_max (acuteWithMin m hm0 hm60)).1 hAcute
+  have hgt := (obtuse_iff_max (acuteWithMin m hm0 hm60)).1 hObtuse
+  linarith
+
+end TriangleAngleLogic
+
+/-! ## 8. 检查原有 32 个定理依赖的公理 -/
+
+#print axioms TriangleAngleLogic.min_range
+#print axioms TriangleAngleLogic.max_range
+#print axioms TriangleAngleLogic.acute_iff_max
+#print axioms TriangleAngleLogic.right_iff_max
+#print axioms TriangleAngleLogic.obtuse_iff_max
+#print axioms TriangleAngleLogic.acute_iff_max_range
+#print axioms TriangleAngleLogic.obtuse_iff_max_range
+#print axioms TriangleAngleLogic.acute_min_range
+#print axioms TriangleAngleLogic.right_min_range
+#print axioms TriangleAngleLogic.obtuse_min_range
+#print axioms TriangleAngleLogic.min_gt_45_acute
+#print axioms TriangleAngleLogic.min_eq_45_acute_or_right
+#print axioms TriangleAngleLogic.min_ge_45_not_obtuse
+#print axioms TriangleAngleLogic.three_types_at_30
+#print axioms TriangleAngleLogic.two_types_at_45
+#print axioms TriangleAngleLogic.not_every_acute_has_min_gt_45
+#print axioms TriangleAngleLogic.min_le_60_does_not_force_acute
+#print axioms TriangleAngleLogic.min_le_45_does_not_force_right
+#print axioms TriangleAngleLogic.min_lt_45_does_not_force_obtuse
+#print axioms TriangleAngleLogic.min_lt_45_does_not_force_acute
+#print axioms TriangleAngleLogic.min_eq_45_does_not_force_acute
+#print axioms TriangleAngleLogic.min_eq_45_does_not_force_right
+#print axioms TriangleAngleLogic.acuteWithMin_isAcute
+#print axioms TriangleAngleLogic.rightWithMin_isRight
+#print axioms TriangleAngleLogic.obtuseWithMin_isObtuse
+#print axioms TriangleAngleLogic.acute_min_exists_iff
+#print axioms TriangleAngleLogic.right_min_exists_iff
+#print axioms TriangleAngleLogic.obtuse_min_exists_iff
+#print axioms TriangleAngleLogic.all_three_types_possible
+#print axioms TriangleAngleLogic.guarantees_acute_iff
+#print axioms TriangleAngleLogic.no_min_guarantees_right
+#print axioms TriangleAngleLogic.no_min_guarantees_obtuse
+
+namespace TriangleAngleLogic
+
+/-!
+## 9. 只知道任意一个内角
+
+这里的 x 是题目给出的角度数。原模型中的 a、b、c 已按大小排列，
+所以“其中一个角是 x”必须写成三个位置的析取，不能写成 t.a = x。
+所有角度仍用实数表示，单位为度。
+-/
+
+def HasAngle (t : Triangle) (x : ℝ) : Prop :=
+  t.a = x ∨ t.b = x ∨ t.c = x
+
+-- 无论给出的是哪个位置的角，它都严格介于 0 与 180 之间。
+theorem hasAngle_bounds (t : Triangle) (x : ℝ)
+    (hx : HasAngle t x) : 0 < x ∧ x < 180 := by
+  rcases hx with hx | hx | hx
+  · constructor <;> linarith [t.a_pos, t.ab, t.bc, t.angle_sum]
+  · constructor <;> linarith [t.a_pos, t.ab, t.bc, t.angle_sum]
+  · constructor <;> linarith [t.a_pos, t.ab, t.bc, t.angle_sum]
+
+-- “含有一个 90 度的角”与直角类型的定义完全一致。
+theorem hasAngle_ninety_iff_right (t : Triangle) :
+    HasAngle t 90 ↔ Right t := by
+  rfl
+
+-- 只要已知角大于 90 度，它就直接见证了钝角类型。
+theorem hasAngle_gt_ninety_obtuse (t : Triangle) (x : ℝ)
+    (hx : HasAngle t x) (hgt : 90 < x) : Obtuse t := by
+  rcases hx with hx | hx | hx
+  · exact Or.inl (by linarith)
+  · exact Or.inr (Or.inl (by linarith))
+  · exact Or.inr (Or.inr (by linarith))
+
+-- 在锐角三角形中，任意被指出的一个角都小于 90 度。
+theorem acute_hasAngle_lt_ninety (t : Triangle) (x : ℝ)
+    (hA : Acute t) (hx : HasAngle t x) : x < 90 := by
+  rcases hx with hx | hx | hx
+  · linarith [hA.1]
+  · linarith [hA.2.1]
+  · linarith [hA.2.2]
+
+-- 直角类型与钝角类型不可能同时成立。
+theorem right_excludes_obtuse (t : Triangle) (hR : Right t) :
+    ¬ Obtuse t := by
+  have hc : t.c = 90 := (right_iff_max t).mp hR
+  intro hO
+  rcases hO with hO | hO | hO
+  · linarith [t.ab, t.bc]
+  · linarith [t.bc]
+  · linarith
+
+/-!
+## 10. 把任意次序的三个角放入有序模型
+
+输入 x、y、z 均为正且和为 180。下面按三个数的大小选取六种排列之一。
+这一步仅改变存放位置，不改变三个角及其类型。
+noncomputable 来自实数比较，并不省略任何证明义务。
+-/
+
+noncomputable def ofAngles (x y z : ℝ)
+    (hx : 0 < x) (hy : 0 < y) (hz : 0 < z)
+    (hs : x + y + z = 180) : Triangle :=
+  if hxy : x ≤ y then
+    if hyz : y ≤ z then
+      { a := x, b := y, c := z,
+        a_pos := hx, ab := hxy, bc := hyz, angle_sum := hs }
+    else if hxz : x ≤ z then
+      { a := x, b := z, c := y,
+        a_pos := hx, ab := hxz, bc := by linarith,
+        angle_sum := by linarith }
+    else
+      { a := z, b := x, c := y,
+        a_pos := hz, ab := by linarith, bc := hxy,
+        angle_sum := by linarith }
+  else
+    if hxz : x ≤ z then
+      { a := y, b := x, c := z,
+        a_pos := hy, ab := by linarith, bc := hxz,
+        angle_sum := by linarith }
+    else if hyz : y ≤ z then
+      { a := y, b := z, c := x,
+        a_pos := hy, ab := hyz, bc := by linarith,
+        angle_sum := by linarith }
+    else
+      { a := z, b := y, c := x,
+        a_pos := hz, ab := by linarith, bc := by linarith,
+        angle_sum := by linarith }
+
+-- 六种排列中，原来的三个角都仍然属于构造出的三角形。
+theorem ofAngles_hasAngles (x y z : ℝ)
+    (hx : 0 < x) (hy : 0 < y) (hz : 0 < z)
+    (hs : x + y + z = 180) :
+    HasAngle (ofAngles x y z hx hy hz hs) x ∧
+    HasAngle (ofAngles x y z hx hy hz hs) y ∧
+    HasAngle (ofAngles x y z hx hy hz hs) z := by
+  unfold ofAngles
+  split_ifs <;> simp [HasAngle]
+
+-- 三个原始角均小于 90 时，排序后的三角形也为锐角类型。
+theorem ofAngles_isAcute (x y z : ℝ)
+    (hx : 0 < x) (hy : 0 < y) (hz : 0 < z)
+    (hs : x + y + z = 180)
+    (hx90 : x < 90) (hy90 : y < 90) (hz90 : z < 90) :
+    Acute (ofAngles x y z hx hy hz hs) := by
+  unfold ofAngles
+  split_ifs <;> simp_all [Acute]
+
+/-!
+## 11. 任意一个给定锐角的三种通用构造
+
+对每个 0 < x < 90：
+锐角构造为 (x, 90 - x/2, 90 - x/2)；
+直角构造为 (x, 90 - x, 90)；
+钝角构造为 (x, 45 - x/2, 135 - x/2)。
+ofAngles 自动排序；不能把这些原始顺序直接当作最小、中间、最大角。
+-/
+
+noncomputable def acuteWithAngle (x : ℝ) (hx0 : 0 < x)
+    (hx90 : x < 90) : Triangle :=
+  ofAngles x (90 - x / 2) (90 - x / 2)
+    hx0 (by linarith) (by linarith) (by ring)
+
+theorem acuteWithAngle_hasAngle (x : ℝ) (hx0 : 0 < x)
+    (hx90 : x < 90) : HasAngle (acuteWithAngle x hx0 hx90) x := by
+  unfold acuteWithAngle
+  exact (ofAngles_hasAngles _ _ _ _ _ _ _).1
+
+theorem acuteWithAngle_isAcute (x : ℝ) (hx0 : 0 < x)
+    (hx90 : x < 90) : Acute (acuteWithAngle x hx0 hx90) := by
+  unfold acuteWithAngle
+  apply ofAngles_isAcute <;> linarith
+
+noncomputable def rightWithAngle (x : ℝ) (hx0 : 0 < x)
+    (hx90 : x < 90) : Triangle :=
+  ofAngles x (90 - x) 90
+    hx0 (by linarith) (by norm_num) (by ring)
+
+theorem rightWithAngle_hasAngle (x : ℝ) (hx0 : 0 < x)
+    (hx90 : x < 90) : HasAngle (rightWithAngle x hx0 hx90) x := by
+  unfold rightWithAngle
+  exact (ofAngles_hasAngles _ _ _ _ _ _ _).1
+
+theorem rightWithAngle_isRight (x : ℝ) (hx0 : 0 < x)
+    (hx90 : x < 90) : Right (rightWithAngle x hx0 hx90) := by
+  change HasAngle (rightWithAngle x hx0 hx90) 90
+  unfold rightWithAngle
+  exact (ofAngles_hasAngles _ _ _ _ _ _ _).2.2
+
+noncomputable def obtuseWithAcuteAngle (x : ℝ) (hx0 : 0 < x)
+    (hx90 : x < 90) : Triangle :=
+  ofAngles x (45 - x / 2) (135 - x / 2)
+    hx0 (by linarith) (by linarith) (by ring)
+
+theorem obtuseWithAcuteAngle_hasAngle (x : ℝ) (hx0 : 0 < x)
+    (hx90 : x < 90) : HasAngle (obtuseWithAcuteAngle x hx0 hx90) x := by
+  unfold obtuseWithAcuteAngle
+  exact (ofAngles_hasAngles _ _ _ _ _ _ _).1
+
+theorem obtuseWithAcuteAngle_isObtuse (x : ℝ) (hx0 : 0 < x)
+    (hx90 : x < 90) : Obtuse (obtuseWithAcuteAngle x hx0 hx90) := by
+  apply hasAngle_gt_ninety_obtuse _ (135 - x / 2)
+  · unfold obtuseWithAcuteAngle
+    exact (ofAngles_hasAngles _ _ _ _ _ _ _).2.2
+  · linarith
+
+-- 给定的角本身为钝角时，另外两个角取为相等的正角。
+noncomputable def obtuseWithObtuseAngle (x : ℝ) (hx90 : 90 < x)
+    (hx180 : x < 180) : Triangle :=
+  ofAngles x ((180 - x) / 2) ((180 - x) / 2)
+    (by linarith) (by linarith) (by linarith) (by ring)
+
+theorem obtuseWithObtuseAngle_hasAngle (x : ℝ) (hx90 : 90 < x)
+    (hx180 : x < 180) : HasAngle (obtuseWithObtuseAngle x hx90 hx180) x := by
+  unfold obtuseWithObtuseAngle
+  exact (ofAngles_hasAngles _ _ _ _ _ _ _).1
+
+theorem obtuseWithObtuseAngle_isObtuse (x : ℝ) (hx90 : 90 < x)
+    (hx180 : x < 180) : Obtuse (obtuseWithObtuseAngle x hx90 hx180) := by
+  exact hasAngle_gt_ninety_obtuse _ x
+    (obtuseWithObtuseAngle_hasAngle x hx90 hx180) hx90
+
+/-!
+## 12. 给定任意一个角时，各类型存在的精确范围
+
+注意直角三角形中“任意一个角”的可能范围为 (0, 90]；
+它可以是锐角，也可以恰好是直角。
+钝角三角形中“任意一个角”可能是锐角或钝角，但不能为 90。
+-/
+
+theorem acute_angle_exists_iff (x : ℝ) :
+    (∃ t : Triangle, Acute t ∧ HasAngle t x) ↔ 0 < x ∧ x < 90 := by
+  constructor
+  · rintro ⟨t, hA, hx⟩
+    exact ⟨(hasAngle_bounds t x hx).1, acute_hasAngle_lt_ninety t x hA hx⟩
+  · rintro ⟨hx0, hx90⟩
+    exact ⟨acuteWithAngle x hx0 hx90, acuteWithAngle_isAcute x hx0 hx90,
+      acuteWithAngle_hasAngle x hx0 hx90⟩
+
+theorem right_angle_exists_iff (x : ℝ) :
+    (∃ t : Triangle, Right t ∧ HasAngle t x) ↔ 0 < x ∧ x ≤ 90 := by
+  constructor
+  · rintro ⟨t, hR, hx⟩
+    refine ⟨(hasAngle_bounds t x hx).1, ?_⟩
+    have hc : t.c = 90 := (right_iff_max t).mp hR
+    rcases hx with hx | hx | hx <;> linarith [t.ab, t.bc]
+  · rintro ⟨hx0, hx90⟩
+    rcases lt_or_eq_of_le hx90 with hlt | heq
+    · exact ⟨rightWithAngle x hx0 hlt, rightWithAngle_isRight x hx0 hlt,
+        rightWithAngle_hasAngle x hx0 hlt⟩
+    · subst x
+      let t := rightWithAngle 45 (by norm_num) (by norm_num)
+      have hR : Right t := rightWithAngle_isRight 45 (by norm_num) (by norm_num)
+      exact ⟨t, hR, (hasAngle_ninety_iff_right t).mpr hR⟩
+
+theorem obtuse_angle_exists_iff (x : ℝ) :
+    (∃ t : Triangle, Obtuse t ∧ HasAngle t x) ↔
+      (0 < x ∧ x < 90) ∨ (90 < x ∧ x < 180) := by
+  constructor
+  · rintro ⟨t, hO, hx⟩
+    have hb := hasAngle_bounds t x hx
+    rcases lt_trichotomy x 90 with hlt | heq | hgt
+    · exact Or.inl ⟨hb.1, hlt⟩
+    · subst x
+      exact False.elim (right_excludes_obtuse t
+        ((hasAngle_ninety_iff_right t).mp hx) hO)
+    · exact Or.inr ⟨hgt, hb.2⟩
+  · rintro (⟨hx0, hx90⟩ | ⟨hx90, hx180⟩)
+    · exact ⟨obtuseWithAcuteAngle x hx0 hx90,
+        obtuseWithAcuteAngle_isObtuse x hx0 hx90,
+        obtuseWithAcuteAngle_hasAngle x hx0 hx90⟩
+    · exact ⟨obtuseWithObtuseAngle x hx90 hx180,
+        obtuseWithObtuseAngle_isObtuse x hx90 hx180,
+        obtuseWithObtuseAngle_hasAngle x hx90 hx180⟩
+
+-- 这个存在性结论排除了不可行角度造成的全称命题“空真”。
+theorem angle_exists_iff (x : ℝ) :
+    (∃ t : Triangle, HasAngle t x) ↔ 0 < x ∧ x < 180 := by
+  constructor
+  · rintro ⟨t, hx⟩
+    exact hasAngle_bounds t x hx
+  · rintro ⟨hx0, hx180⟩
+    by_cases hx90 : x ≤ 90
+    · obtain ⟨t, _, hx⟩ := (right_angle_exists_iff x).mpr ⟨hx0, hx90⟩
+      exact ⟨t, hx⟩
+    · obtain ⟨t, _, hx⟩ := (obtuse_angle_exists_iff x).mpr
+        (Or.inr ⟨by linarith, hx180⟩)
+      exact ⟨t, hx⟩
+
+-- 三个存在命题各有自己的见证，不是同一个三角形兼有三种类型。
+theorem all_three_types_possible_for_angle (x : ℝ)
+    (hx0 : 0 < x) (hx90 : x < 90) :
+    (∃ t : Triangle, Acute t ∧ HasAngle t x) ∧
+    (∃ t : Triangle, Right t ∧ HasAngle t x) ∧
+    (∃ t : Triangle, Obtuse t ∧ HasAngle t x) := by
+  exact ⟨(acute_angle_exists_iff x).mpr ⟨hx0, hx90⟩,
+    (right_angle_exists_iff x).mpr ⟨hx0, le_of_lt hx90⟩,
+    (obtuse_angle_exists_iff x).mpr (Or.inl ⟨hx0, hx90⟩)⟩
+
+/-!
+## 13. “仅凭这一个角就一定如此”的精确判定
+
+这里的全称量词遍历所有含角 x 的三角形。
+必须先限定 0 < x < 180，确保确有这样的三角形。
+-/
+
+theorem no_angle_guarantees_acute (x : ℝ)
+    (hx0 : 0 < x) (hx180 : x < 180) :
+    ¬ (∀ t : Triangle, HasAngle t x → Acute t) := by
+  intro h
+  by_cases hx90 : x < 90
+  · let t := rightWithAngle x hx0 hx90
+    have hR : Right t := rightWithAngle_isRight x hx0 hx90
+    have hA : Acute t := h t (rightWithAngle_hasAngle x hx0 hx90)
+    have hc : t.c = 90 := (right_iff_max t).mp hR
+    linarith [hA.2.2]
+  · obtain ⟨t, ht⟩ := (angle_exists_iff x).mpr ⟨hx0, hx180⟩
+    have hlt := acute_hasAngle_lt_ninety t x (h t ht) ht
+    exact hx90 hlt
+
+theorem angle_guarantees_right_iff (x : ℝ)
+    (hx0 : 0 < x) (hx180 : x < 180) :
+    (∀ t : Triangle, HasAngle t x → Right t) ↔ x = 90 := by
+  constructor
+  · intro h
+    rcases lt_trichotomy x 90 with hlt | heq | hgt
+    · obtain ⟨t, hO, ht⟩ := (obtuse_angle_exists_iff x).mpr
+        (Or.inl ⟨hx0, hlt⟩)
+      exact False.elim (right_excludes_obtuse t (h t ht) hO)
+    · exact heq
+    · obtain ⟨t, hO, ht⟩ := (obtuse_angle_exists_iff x).mpr
+        (Or.inr ⟨hgt, hx180⟩)
+      exact False.elim (right_excludes_obtuse t (h t ht) hO)
+  · intro heq t ht
+    subst x
+    exact (hasAngle_ninety_iff_right t).mp ht
+
+theorem angle_guarantees_obtuse_iff (x : ℝ)
+    (hx0 : 0 < x) (_hx180 : x < 180) :
+    (∀ t : Triangle, HasAngle t x → Obtuse t) ↔ 90 < x := by
+  constructor
+  · intro h
+    by_contra hn
+    have hx90 : x ≤ 90 := by linarith
+    obtain ⟨t, hR, ht⟩ := (right_angle_exists_iff x).mpr ⟨hx0, hx90⟩
+    exact right_excludes_obtuse t hR (h t ht)
+  · intro hgt t ht
+    exact hasAngle_gt_ninety_obtuse t x ht hgt
+
+/-!
+## 14. 一个 60 度的角：三种明确反例
+
+三个三角形分别按大小写成 (60,60,60)、(30,60,90)、(20,60,100)。
+都含 60 度，但类型不同，因此不能把“一个角”偷换成“最小角”。
+-/
+
+def acuteAngle60 : Triangle where
+  a := 60
+  b := 60
+  c := 60
+  a_pos := by norm_num
+  ab := by norm_num
+  bc := by norm_num
+  angle_sum := by norm_num
+
+def rightAngle60 : Triangle where
+  a := 30
+  b := 60
+  c := 90
+  a_pos := by norm_num
+  ab := by norm_num
+  bc := by norm_num
+  angle_sum := by norm_num
+
+def obtuseAngle60 : Triangle where
+  a := 20
+  b := 60
+  c := 100
+  a_pos := by norm_num
+  ab := by norm_num
+  bc := by norm_num
+  angle_sum := by norm_num
+
+theorem three_types_at_60_angle :
+    (Acute acuteAngle60 ∧ HasAngle acuteAngle60 60) ∧
+    (Right rightAngle60 ∧ HasAngle rightAngle60 60) ∧
+    (Obtuse obtuseAngle60 ∧ HasAngle obtuseAngle60 60) := by
+  norm_num [Acute, Right, Obtuse, HasAngle,
+    acuteAngle60, rightAngle60, obtuseAngle60]
+
+-- 错误全称命题的否定；并非断言所有含锐角的三角形都不锐。
+theorem one_acute_angle_does_not_force_acute :
+    ¬ (∀ t : Triangle, ∀ x : ℝ,
+      HasAngle t x → 0 < x → x < 90 → Acute t) := by
+  intro h
+  have hA : Acute rightAngle60 :=
+    h rightAngle60 60 (by norm_num [HasAngle, rightAngle60])
+      (by norm_num) (by norm_num)
+  norm_num [Acute, rightAngle60] at hA
+
+/-!
+## 15. 新增定理的公理依赖检查
+
+这些命令与原有 32 项一起接受实际编译检查。
+没有 sorry、admit 或新增 axiom；公理名称不是错误提示。
+-/
+
+#print axioms hasAngle_bounds
+#print axioms hasAngle_ninety_iff_right
+#print axioms hasAngle_gt_ninety_obtuse
+#print axioms acute_hasAngle_lt_ninety
+#print axioms right_excludes_obtuse
+#print axioms ofAngles_hasAngles
+#print axioms ofAngles_isAcute
+#print axioms acuteWithAngle_hasAngle
+#print axioms acuteWithAngle_isAcute
+#print axioms rightWithAngle_hasAngle
+#print axioms rightWithAngle_isRight
+#print axioms obtuseWithAcuteAngle_hasAngle
+#print axioms obtuseWithAcuteAngle_isObtuse
+#print axioms obtuseWithObtuseAngle_hasAngle
+#print axioms obtuseWithObtuseAngle_isObtuse
+#print axioms acute_angle_exists_iff
+#print axioms right_angle_exists_iff
+#print axioms obtuse_angle_exists_iff
+#print axioms angle_exists_iff
+#print axioms all_three_types_possible_for_angle
+#print axioms no_angle_guarantees_acute
+#print axioms angle_guarantees_right_iff
+#print axioms angle_guarantees_obtuse_iff
+#print axioms three_types_at_60_angle
+#print axioms one_acute_angle_does_not_force_acute
+
+end TriangleAngleLogic
+
+\end{Verbatim}
+% END_FULL_LEAN_SOURCE
+
+\chapter{实际验证记录与复现说明}
+\label{app:verification}
+
+\section{验证对象与环境}
+
+检查对象是附录\ref{app:complete-code}的完整源文件。实际使用 Lean 4.19.0，mathlib v4.19.0；mathlib 的提交为
+\begin{quote}\small\path{c44e0c8ee63ca166450922a373c7409c5d26b00b}\end{quote}
+运行命令为：
+\begin{Verbatim}
+lake env lean 三角形角度逻辑.lean
+\end{Verbatim}
+检查结果为退出码 0、57 个定理、0 个错误、0 个警告。对全部定理执行公理依赖检查，均未发现 \texttt{sorryAx}。下面保留实际输出；这些标准公理名称不是错误提示。
+
+\section{全部公理依赖输出}
+\begin{Verbatim}[fontsize=\fontsize{8.5}{11}\selectfont]
+'TriangleAngleLogic.min_range' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.max_range' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.acute_iff_max' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.right_iff_max' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.obtuse_iff_max' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.acute_iff_max_range' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.obtuse_iff_max_range' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.acute_min_range' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.right_min_range' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.obtuse_min_range' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.min_gt_45_acute' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.min_eq_45_acute_or_right' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.min_ge_45_not_obtuse' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.three_types_at_30' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.two_types_at_45' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.not_every_acute_has_min_gt_45' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.min_le_60_does_not_force_acute' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.min_le_45_does_not_force_right' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.min_lt_45_does_not_force_obtuse' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.min_lt_45_does_not_force_acute' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.min_eq_45_does_not_force_acute' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.min_eq_45_does_not_force_right' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.acuteWithMin_isAcute' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.rightWithMin_isRight' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.obtuseWithMin_isObtuse' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.acute_min_exists_iff' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.right_min_exists_iff' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.obtuse_min_exists_iff' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.all_three_types_possible' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.guarantees_acute_iff' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.no_min_guarantees_right' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.no_min_guarantees_obtuse' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.hasAngle_bounds' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.hasAngle_ninety_iff_right' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.hasAngle_gt_ninety_obtuse' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.acute_hasAngle_lt_ninety' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.right_excludes_obtuse' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.ofAngles_hasAngles' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.ofAngles_isAcute' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.acuteWithAngle_hasAngle' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.acuteWithAngle_isAcute' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.rightWithAngle_hasAngle' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.rightWithAngle_isRight' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.obtuseWithAcuteAngle_hasAngle' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.obtuseWithAcuteAngle_isObtuse' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.obtuseWithObtuseAngle_hasAngle' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.obtuseWithObtuseAngle_isObtuse' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.acute_angle_exists_iff' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.right_angle_exists_iff' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.obtuse_angle_exists_iff' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.angle_exists_iff' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.all_three_types_possible_for_angle' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.no_angle_guarantees_acute' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.angle_guarantees_right_iff' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.angle_guarantees_obtuse_iff' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.three_types_at_60_angle' depends on axioms: [propext, Classical.choice, Quot.sound]
+'TriangleAngleLogic.one_acute_angle_does_not_force_acute' depends on axioms: [propext, Classical.choice, Quot.sound]
+
+\end{Verbatim}
+
+\section{重新编译本书}
+
+完整源码包包括本书的单文件 LaTeX 源码、原始 Lean 文件、验证日志、代码字体与许可说明。数学正文、全部图形和完整 Lean 源码已经直接写入主 \texttt{.tex} 文件；图形不依赖外部位图。
+
+使用含 CTeX、TikZ、\texttt{fvextra} 等常用宏包的 TeX Live 或其他兼容发行版，在源文件目录运行两遍：
+\begin{Verbatim}
+xelatex 三角形角度范围_原理与Lean论证.tex
+xelatex 三角形角度范围_原理与Lean论证.tex
+\end{Verbatim}
+第二遍用于更新目录、页码和交叉引用。源码采用标准 \texttt{ctexbook} 样式，使用 Fandol 简体中文字体；代码字体优先读取源码包中的 \texttt{fonts/DejaVuSansMono.ttf}。不需要开启 shell escape。
+
+\backmatter
+\chapter{参考资料}
+
+本书中的角度推导和反例均在正文中给出。以下官方与社区资料用于进一步学习 Lean 的逻辑、策略与基础。
+
+\begin{enumerate}[label=\arabic*.]
+\item Lean 官方教材，\emph{Theorem Proving in Lean 4}，第 3 章“Propositions and Proofs”。\par
+\url{https://lean-lang.org/theorem_proving_in_lean4/Propositions-and-Proofs/}
+\item Lean 官方教材，\emph{Theorem Proving in Lean 4}，第 12 章“Axioms and Computation”。\par
+\url{https://lean-lang.org/theorem_proving_in_lean4/Axioms-and-Computation/}
+\item mathlib 社区教材，\emph{Mathematics in Lean}，第 2 章“Basics”。\par
+\url{https://leanprover-community.github.io/mathematics_in_lean/C02_Basics.html}
+\item mathlib v4.19.0 源码，用于本书实际验证的固定版本。\par
+\url{https://github.com/leanprover-community/mathlib4/tree/v4.19.0}
+\end{enumerate}
+
+上述在线资料可能随项目更新。本书的可复现验证记录以明确列出的 Lean 与 mathlib 版本为准。
+\end{document}
